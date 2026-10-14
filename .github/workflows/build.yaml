@@ -1,0 +1,57 @@
+name: Build APK Release
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: "17"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.22.3"
+          channel: stable
+          cache: true
+
+      - name: Prepare Android project
+        shell: bash
+        run: |
+          set -e
+          if [ ! -f "android/gradlew" ] || [ ! -f "android/app/build.gradle" ]; then
+            echo "Android project missing. Generating platform files..."
+            rm -rf android
+            flutter create . --org com.abessvpn --project-name abess_vpn --platforms=android
+          fi
+          if [ -f "android/app/build.gradle" ]; then
+            sed -i 's/minSdkVersion.*/minSdkVersion 21/' android/app/build.gradle || true
+            sed -i 's/minSdk .*/minSdk 21/' android/app/build.gradle || true
+          fi
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Render VPN logo PNG from SVG
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y librsvg2-bin
+          rsvg-convert -w 1024 -h 1024 assets/abess_vpn_logo.svg -o assets/logo.png
+
+      - name: Generate launcher icons
+        run: dart run flutter_launcher_icons
+
+      - name: Build APK
+        run: flutter build apk --release --no-tree-shake-icons
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: abess-vpn-release
+          path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
