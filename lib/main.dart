@@ -282,7 +282,8 @@ class _MainCyberScreenState extends State<MainCyberScreen>
     await _loadSavedToken();
 
     try {
-      motorReady = await v2ray.initializeV2Ray();
+      await v2ray.initializeV2Ray();
+      motorReady = true;
       if (motorReady) {
         _addLog('MOTEUR XRAY/VLESS CHARGÉ EN MÉMOIRE SECURISEE', LogType.success);
       } else {
@@ -720,7 +721,7 @@ class _MainCyberScreenState extends State<MainCyberScreen>
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
-                mainAxisAlignment: MainAxisAlignment.between,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
                     'SÉLECTIONNEZ UN SERVEUR CLOUD',
@@ -891,7 +892,7 @@ class _MainCyberScreenState extends State<MainCyberScreen>
         ),
       ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.between,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Row(
             children: [
@@ -1224,7 +1225,7 @@ class _MainCyberScreenState extends State<MainCyberScreen>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.between,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Row(
                 children: [
