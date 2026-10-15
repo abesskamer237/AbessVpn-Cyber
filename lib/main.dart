@@ -146,8 +146,9 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
 
   // URLs Serveurs Maîtres AbessVpn
   final List<String> _masterServerUrls = [
+    'https://ais-pre-23z4ejavtx4qwesb3fw46m-293855677478.us-west2.run.app',
     'https://abess-ops-hub-d-ploiement-docker.ai.studio',
-    'https://ais-dev-muotwupfrogxg6n6tf35xa-883925584421.us-east1.run.app',
+    'https://ais-dev-23z4ejavtx4qwesb3fw46m-293855677478.us-west2.run.app',
   ];
 
   late AnimationController _pulseController;
