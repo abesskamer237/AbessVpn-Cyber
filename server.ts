@@ -230,17 +230,20 @@ function encryptConfig(plainJson: object, secret: string): string {
 // Telemetry & metrics
 let activeTunnelConnections = 0;
 let totalBytesTransferred = 1024 * 1024 * 460;
-const startTime = Date.now();
 
 // Sessions in memory for token authentication
 const activeSessions = new Map<string, { userId: string; role: string; email: string }>();
 
 async function startServer() {
   const app = express();
-  app.use(express.json());
 
-  // CORS
+  app.use(express.json({ limit: '1mb' }));
+
+  // Security Headers & CORS
   app.use((req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('X-XSS-Protection', '1; mode=block');
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
@@ -291,7 +294,7 @@ async function startServer() {
 
     const users = loadUsers();
     const user = users.find(
-      u => u.email.toLowerCase().trim() === email.toLowerCase().trim() && u.passwordHash === password
+      u => u.email.toLowerCase().trim() === String(email).toLowerCase().trim() && u.passwordHash === password
     );
 
     if (!user) {
@@ -374,18 +377,18 @@ async function startServer() {
     }
 
     const users = loadUsers();
-    if (users.some(u => u.email.toLowerCase() === email.toLowerCase().trim())) {
+    if (users.some(u => u.email.toLowerCase() === String(email).toLowerCase().trim())) {
       res.status(400).json({ error: 'Un compte avec cet email existe déjà.' });
       return;
     }
 
     const newReseller: AppUser = {
       id: 'usr_reseller_' + Math.random().toString(36).substring(2, 9),
-      email: email.toLowerCase().trim(),
-      passwordHash: password,
-      name: name.trim(),
+      email: String(email).toLowerCase().trim(),
+      passwordHash: String(password),
+      name: String(name).trim(),
       role: 'RESELLER',
-      credits: Number(initialCredits) || 100, // Solde initial
+      credits: Number(initialCredits) || 100,
       totalTokensCreated: 0,
       totalBandwidthAllocatedGb: 0,
       status: 'active',
@@ -470,17 +473,14 @@ async function startServer() {
 
   // ==========================================
   // 3. TOKENS CREATION & MANAGEMENT
-  // (Resellers see ONLY their tokens, NEVER server config!)
   // ==========================================
   app.get('/api/v1/admin/tokens', authenticate, (req, res) => {
     const user: AppUser = (req as any).user;
     const tokens = loadTokens();
 
     if (user.role === 'SUPER_ADMIN') {
-      // Super Admin sees all tokens with full reseller visibility
       res.json(tokens);
     } else {
-      // Reseller sees ONLY his own tokens
       const myTokens = tokens.filter(t => t.resellerId === user.id);
       res.json(myTokens);
     }
@@ -493,7 +493,6 @@ async function startServer() {
 
     const requestedGb = Number(bandwidthGb) || 50;
 
-    // Credit Verification for Resellers
     if (user.role === 'RESELLER') {
       if (user.credits < requestedGb) {
         res.status(400).json({
@@ -508,7 +507,6 @@ async function startServer() {
     const calculatedExpiresAt = expiresAt || new Date(Date.now() + (Number(days) || 30) * 24 * 3600 * 1000).toISOString();
     const daysRemaining = Math.max(0, Math.ceil((new Date(calculatedExpiresAt).getTime() - Date.now()) / (1000 * 3600 * 24)));
 
-    // Generate Encrypted abess:// Link without exposing master host/ip to reseller UI
     const encryptedPayload = {
       vpnName: 'AbessVpn',
       token: finalToken,
@@ -547,7 +545,6 @@ async function startServer() {
     tokens.unshift(newToken);
     saveTokens(tokens);
 
-    // Deduct credits from reseller & update stats
     const users = loadUsers();
     const currentUser = users.find(u => u.id === user.id);
     if (currentUser) {
@@ -585,12 +582,11 @@ async function startServer() {
 
   // ==========================================
   // 4. MASTER SERVER CONFIGURATION (SUPER ADMIN ONLY)
-  // (NEVER ACCESSIBLE TO RESELLERS!)
   // ==========================================
   app.get('/api/v1/admin/server-config', authenticate, (req, res) => {
     const user: AppUser = (req as any).user;
     if (user.role !== 'SUPER_ADMIN') {
-      res.status(403).json({ error: 'ACCÈS REFUSÉ : Les informations d\'infrastructure (Host, SNI, IP) sont confidentielles et réservées au Super Administrateur.' });
+      res.status(403).json({ error: 'ACCÈS REFUSÉ : Les informations d\'infrastructure sont réservées au Super Administrateur.' });
       return;
     }
     res.json(loadMasterConfig());
@@ -651,8 +647,24 @@ async function startServer() {
   });
 
   // ==========================================
-  // 6. CLIENT MOBILE APPLICATION AUTHENTICATION & TELEMETRY
-  // (Called by Flutter client on Android/iOS & Web preview)
+  // 6. SPEEDTEST ENDPOINTS (DOWNLOAD & UPLOAD)
+  // ==========================================
+  app.get('/api/v1/speedtest/download', (req, res) => {
+    const requestedBytes = Math.min(10 * 1024 * 1024, Math.max(1024, Number(req.query.bytes) || 1024 * 1024));
+    const buffer = crypto.randomBytes(requestedBytes);
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Length', requestedBytes.toString());
+    res.status(200).send(buffer);
+  });
+
+  app.post('/api/v1/speedtest/upload', express.raw({ type: 'application/octet-stream', limit: '10mb' }), (req, res) => {
+    const bytesReceived = req.body instanceof Buffer ? req.body.length : (typeof req.body === 'string' ? Buffer.byteLength(req.body) : 0);
+    totalBytesTransferred += bytesReceived;
+    res.json({ ok: true, bytesReceived, timestamp: Date.now() });
+  });
+
+  // ==========================================
+  // 7. CLIENT MOBILE APPLICATION AUTHENTICATION & TELEMETRY
   // ==========================================
 
   // Ping Endpoint for real-time latency measurement
@@ -667,7 +679,7 @@ async function startServer() {
     });
   });
 
-  // Client / Reseller Token & Config Creator (Fixing GB Quota & Expiration)
+  // Client / Reseller Token & Config Creator
   app.post('/api/v1/client/create-token', (req, res) => {
     try {
       const {
@@ -862,7 +874,6 @@ async function startServer() {
     }
     saveDevices(devices);
 
-    // Create 1GB 24h Token
     const tokens = loadTokens();
     const trialTokenCode = `ABESS-FREE-1GB-${Math.floor(1000 + Math.random() * 9000)}`;
     const expiresAt = new Date(now.getTime() + 24 * 3600 * 1000).toISOString();
@@ -968,7 +979,6 @@ async function startServer() {
         return;
       }
 
-      // Check device binding & limits if deviceId provided
       if (deviceId) {
         const devices = loadDevices();
         let dev = devices.find(d => d.fingerprint === deviceId);
@@ -992,7 +1002,6 @@ async function startServer() {
         } else {
           dev.boundTokens = dev.boundTokens || [];
           if (!dev.boundTokens.includes(found.token)) {
-            // Count distinct devices bound to this token
             const boundCount = devices.filter(d => d.boundTokens && d.boundTokens.includes(found.token)).length;
             if (boundCount >= found.deviceLimit) {
               res.status(403).json({
@@ -1078,19 +1087,26 @@ async function startServer() {
     });
   });
 
-  // Frontend static / dev middleware
+  // Frontend static / dev middleware with safe try-catch
   if (!isProduction) {
-    const { createServer: createViteServer } = await import('vite');
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa'
-    });
-    app.use(vite.middlewares);
+    try {
+      const { createServer: createViteServer } = await import('vite');
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: 'spa'
+      });
+      app.use(vite.middlewares);
+    } catch (_) {
+      // Fallback if Vite is not available
+    }
   } else {
-    app.use(express.static(path.resolve(__dirname, 'dist')));
-    app.get('*', (req, res) => {
-      res.sendFile(path.resolve(__dirname, 'dist', 'index.html'));
-    });
+    const distPath = path.resolve(__dirname, 'dist');
+    if (fs.existsSync(distPath)) {
+      app.use(express.static(distPath));
+      app.get('*', (req, res) => {
+        res.sendFile(path.resolve(distPath, 'index.html'));
+      });
+    }
   }
 
   server.listen(PORT, '0.0.0.0', () => {

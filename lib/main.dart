@@ -123,6 +123,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
       ),
     );
   }
+
   // Palette Cyberpunk
   static const Color cyberGreen = Color(0xFF10B981);
   static const Color cyberCyan = Color(0xFF06B6D4);
@@ -228,7 +229,6 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     if (link.isEmpty) return;
     try {
       if (link.startsWith("vless://") || link.startsWith("vmess://") || link.startsWith("trojan://") || link.startsWith("ss://")) {
-        // Extraction basique
         final uri = Uri.parse(link.replaceAll("#", "?tag="));
         final proto = uri.scheme;
         final host = uri.host;
@@ -317,6 +317,13 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     _fileInputCtrl.dispose();
     _createTokenCodeCtrl.dispose();
     _createPlanNameCtrl.dispose();
+    _customHostCtrl.dispose();
+    _customPortCtrl.dispose();
+    _customPathCtrl.dispose();
+    _customUuidCtrl.dispose();
+    _customSniCtrl.dispose();
+    _customNameCtrl.dispose();
+    _rawLinkInputCtrl.dispose();
     super.dispose();
   }
 
@@ -328,11 +335,14 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
       id = 'HWID-PHONE-CYBER-$rand';
       await prefs.setString('abess_device_id', id);
     }
-    setState(() => _deviceId = id!);
+    if (mounted) {
+      setState(() => _deviceId = id!);
+    }
   }
 
   void _addLog(String msg) {
     final time = DateTime.now().toIso8601String().substring(11, 19);
+    if (!mounted) return;
     setState(() {
       _logs.insert(0, '[$time] $msg');
       if (_logs.length > 50) _logs.removeLast();
@@ -344,6 +354,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     try {
       v2ray = FlutterV2ray(
         onStatusChanged: (status) {
+          if (!mounted) return;
           setState(() {
             vpnStatus = status.state;
             if (status.state == 'CONNECTED') {
@@ -378,16 +389,19 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
         },
       );
       await v2ray.initializeV2Ray();
-      setState(() => isV2rayInitialized = true);
+      if (mounted) {
+        setState(() => isV2rayInitialized = true);
+      }
       _addLog('MOTEUR V2RAY/XRAY INITIALISÉ');
     } catch (e) {
       _addLog('NOTE ENGINE (FALLBACK PRET): $e');
     }
   }
 
-  // Chargement du serveur sauvegardé (AUCUN SERVEUR PAR DÉFAUT)
+  // Chargement du serveur sauvegardé
   Future<void> _loadSavedServer() async {
     final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
     setState(() {
       isKillSwitchEnabled = prefs.getBool('abess_kill_switch') ?? true;
       isAutoReconnectEnabled = prefs.getBool('abess_auto_reconnect') ?? true;
@@ -396,23 +410,25 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     if (savedData != null) {
       try {
         final Map<String, dynamic> map = jsonDecode(savedData);
-        setState(() {
-          currentServer = ImportedVpnServer(
-            name: map['name'] ?? 'ABESS VIP IMPORTÉ',
-            address: map['address'] ?? 'abess-ops-hub-d-ploiement-docker.ai.studio',
-            port: map['port'] ?? 443,
-            path: map['path'] ?? '/@abess237',
-            sni: map['sni'] ?? 'crashlyticsreports-pa.googleapis.com',
-            uuid: map['uuid'] ?? 'abe55237-0237-4237-8237-ab3552370237',
-            bandwidthGb: (map['bandwidthGb'] as num?)?.toDouble() ?? 10.0,
-            bandwidthUsedGb: (map['bandwidthUsedGb'] as num?)?.toDouble() ?? 0.0,
-            expiresAt: DateTime.tryParse(map['expiresAt'] ?? '') ?? DateTime.now().add(const Duration(days: 30)),
-            token: map['token'],
-            encryptedLink: map['encryptedLink'],
-            deviceLimit: map['deviceLimit'] ?? 1,
-          );
-        });
-        _addLog('SERVEUR RESTAURÉ: ${currentServer!.name}');
+        if (mounted) {
+          setState(() {
+            currentServer = ImportedVpnServer(
+              name: map['name'] ?? 'ABESS VIP IMPORTÉ',
+              address: map['address'] ?? 'abess-ops-hub-d-ploiement-docker.ai.studio',
+              port: map['port'] ?? 443,
+              path: map['path'] ?? '/@abess237',
+              sni: map['sni'] ?? 'crashlyticsreports-pa.googleapis.com',
+              uuid: map['uuid'] ?? 'abe55237-0237-4237-8237-ab3552370237',
+              bandwidthGb: (map['bandwidthGb'] as num?)?.toDouble() ?? 10.0,
+              bandwidthUsedGb: (map['bandwidthUsedGb'] as num?)?.toDouble() ?? 0.0,
+              expiresAt: DateTime.tryParse(map['expiresAt'] ?? '') ?? DateTime.now().add(const Duration(days: 30)),
+              token: map['token'],
+              encryptedLink: map['encryptedLink'],
+              deviceLimit: map['deviceLimit'] ?? 1,
+            );
+          });
+          _addLog('SERVEUR RESTAURÉ: ${currentServer!.name}');
+        }
       } catch (_) {}
     } else {
       _addLog('AUCUN SERVEUR ACTIF: VEUILLEZ IMPORTER UN ACCÈS');
@@ -469,24 +485,20 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     _connectionDurationSeconds = 0;
     final rnd = math.Random();
 
-    // Ping continu toutes les 6 secondes
     _pingTimer = Timer.periodic(const Duration(seconds: 6), (_) => _measureRealPing());
 
-    // Télémétrie chaque seconde
     _telemetryTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!isConnected) return;
+      if (!isConnected || !mounted) return;
 
       setState(() {
         _connectionDurationSeconds++;
-        // Débit simulé réaliste
-        _currentDownloadSpeed = 12.8 + rnd.nextDouble() * 5.4; // 12-18 Mo/s
-        _currentUploadSpeed = 2.1 + rnd.nextDouble() * 2.2; // 2.1-4.3 Mo/s
+        _currentDownloadSpeed = 12.8 + rnd.nextDouble() * 5.4;
+        _currentUploadSpeed = 2.1 + rnd.nextDouble() * 2.2;
 
         final secMb = (_currentDownloadSpeed + _currentUploadSpeed);
         _totalDownloadMb += _currentDownloadSpeed;
         _totalUploadMb += _currentUploadSpeed;
 
-        // Actualiser l'historique du graphique en temps réel
         _speedHistoryDownload.add(FlSpot(_speedHistoryDownload.length.toDouble(), _currentDownloadSpeed));
         if (_speedHistoryDownload.length > 15) {
           _speedHistoryDownload.removeAt(0);
@@ -513,7 +525,6 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
         }
       });
 
-      // Synchronisation périodique avec le serveur maître toutes les 10 secondes
       if (_connectionDurationSeconds % 10 == 0 && currentServer?.token != null) {
         _syncUsageWithServer();
       }
@@ -556,10 +567,12 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
   void _stopTelemetry() {
     _telemetryTimer?.cancel();
     _pingTimer?.cancel();
-    setState(() {
-      _currentDownloadSpeed = 0.0;
-      _currentUploadSpeed = 0.0;
-    });
+    if (mounted) {
+      setState(() {
+        _currentDownloadSpeed = 0.0;
+        _currentUploadSpeed = 0.0;
+      });
+    }
   }
 
   Future<void> _openUrlSafe(String url) async {
@@ -591,13 +604,14 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
   }
 
   void _showQuotaExceededAlert() {
+    if (!mounted) return;
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: cyberCardBg,
         title: const Text('🛑 QUOTA ÉPUISÉ', style: TextStyle(color: cyberRed, fontWeight: FontWeight.bold)),
         content: Text(
-          'Votre quota de ${currentServer?.bandwidthGb.toStringAsFixed(1)} Go est totalement consommé. Veuillez renouveler votre accès ou contacter l\'assistance WhatsApp.',
+          'Votre quota de ${currentServer?.bandwidthGb.toStringAsFixed(1)} Go est totalement consommé. Veuillez renouveler votre accès ou contacter l\'assistance WhatsApp ($_whatsappSupportPhone).',
           style: const TextStyle(color: Colors.white70),
         ),
         actions: [
@@ -627,6 +641,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
   }
 
   void _showExpiredAlert() {
+    if (!mounted) return;
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -663,6 +678,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
   }
 
   void _showSpeedTestModal() {
+    if (!mounted) return;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -685,7 +701,6 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                 status = 'Mesure de la latence Ping (ms)...';
               });
 
-              // Phase 1 : Ping
               try {
                 final sw = Stopwatch()..start();
                 final res = await http.get(Uri.parse('${_masterServerUrls[0]}/api/v1/ping')).timeout(const Duration(seconds: 4));
@@ -702,7 +717,6 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                 status = 'Test de débit descendant (Download)...';
               });
 
-              // Phase 2 : Download
               try {
                 final sw = Stopwatch()..start();
                 final res = await http.get(Uri.parse('${_masterServerUrls[0]}/api/v1/speedtest/download?bytes=1048576')).timeout(const Duration(seconds: 5));
@@ -720,7 +734,6 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                 status = 'Test de débit montant (Upload)...';
               });
 
-              // Phase 3 : Upload
               try {
                 final sw = Stopwatch()..start();
                 final dummy = List<int>.filled(256 * 1024, 65);
@@ -791,11 +804,10 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                     const SizedBox(height: 16),
                     Row(
                       children: [
-                        // Ping
                         Expanded(
                           child: Container(
                             padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(12), border: Border.all(color: cyberYellow.withOpacity(0.4))),
+                            decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(12), border: Border.all(color: cyberYellow.withValues(alpha: 0.4))),
                             child: Column(
                               children: [
                                 const Text('LATENCE PING', style: TextStyle(color: cyberYellow, fontSize: 9, fontWeight: FontWeight.bold)),
@@ -806,11 +818,10 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                           ),
                         ),
                         const SizedBox(width: 8),
-                        // Download
                         Expanded(
                           child: Container(
                             padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(12), border: Border.all(color: cyberCyan.withOpacity(0.4))),
+                            decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(12), border: Border.all(color: cyberCyan.withValues(alpha: 0.4))),
                             child: Column(
                               children: [
                                 const Text('DOWNLOAD', style: TextStyle(color: cyberCyan, fontSize: 9, fontWeight: FontWeight.bold)),
@@ -822,11 +833,10 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                           ),
                         ),
                         const SizedBox(width: 8),
-                        // Upload
                         Expanded(
                           child: Container(
                             padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(12), border: Border.all(color: cyberGreen.withOpacity(0.4))),
+                            decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(12), border: Border.all(color: cyberGreen.withValues(alpha: 0.4))),
                             child: Column(
                               children: [
                                 const Text('UPLOAD', style: TextStyle(color: cyberGreen, fontSize: 9, fontWeight: FontWeight.bold)),
@@ -844,9 +854,9 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: cyberGreen.withOpacity(0.1),
+                          color: cyberGreen.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: cyberGreen.withOpacity(0.4)),
+                          border: Border.all(color: cyberGreen.withValues(alpha: 0.4)),
                         ),
                         child: Row(
                           children: [
@@ -914,7 +924,9 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
       return;
     }
 
-    setState(() => isConnecting = true);
+    if (mounted) {
+      setState(() => isConnecting = true);
+    }
     _addLog('ÉTABLISSEMENT DU TUNNEL CHIFFRÉ...');
 
     try {
@@ -922,7 +934,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
         final permission = await v2ray.requestPermission();
         if (!permission) {
           _addLog('PERMISSION VPN SYSTÈME REFUSÉE');
-          setState(() => isConnecting = false);
+          if (mounted) setState(() => isConnecting = false);
           return;
         }
 
@@ -936,20 +948,24 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
         );
       } else {
         await Future.delayed(const Duration(milliseconds: 700));
+        if (mounted) {
+          setState(() {
+            isConnected = true;
+            isConnecting = false;
+          });
+          _startTelemetry();
+        }
+      }
+      _addLog('TUNNEL SÉCURISÉ ACTIF • CHIFFREMENT VLESS');
+    } catch (e) {
+      _addLog('NOTE DÉMARRAGE: $e');
+      if (mounted) {
         setState(() {
           isConnected = true;
           isConnecting = false;
         });
         _startTelemetry();
       }
-      _addLog('TUNNEL SÉCURISÉ ACTIF • CHIFFREMENT VLESS');
-    } catch (e) {
-      _addLog('NOTE DÉMARRAGE: $e');
-      setState(() {
-        isConnected = true;
-        isConnecting = false;
-      });
-      _startTelemetry();
     }
   }
 
@@ -961,10 +977,12 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
       }
     } catch (_) {}
 
-    setState(() {
-      isConnected = false;
-      isConnecting = false;
-    });
+    if (mounted) {
+      setState(() {
+        isConnected = false;
+        isConnecting = false;
+      });
+    }
     _stopTelemetry();
     _saveCurrentServer();
     _addLog('TUNNEL DÉCONNECTÉ');
@@ -1061,7 +1079,9 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
               token: cleanToken,
               deviceLimit: data['deviceLimit'] ?? 1,
             );
-            setState(() => currentServer = newServer);
+            if (mounted) {
+              setState(() => currentServer = newServer);
+            }
             _saveCurrentServer();
             _addLog('SERVEUR MAÎTRE VALIDÉ (${newServer.bandwidthGb} Go • Expiration: ${_formatRemaining(newServer.expiresAt)})');
             return;
@@ -1069,7 +1089,9 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
         } else if (res.statusCode == 403) {
           final data = jsonDecode(res.body);
           _addLog('REFUS SERVEUR: ${data['error']}');
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${data['error']}')));
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${data['error']}')));
+          }
           return;
         }
       } catch (_) {}
@@ -1077,9 +1099,11 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
 
     if (!silent) {
       _addLog('SERVEUR EN LIGNE INACCESSIBLE OU TOKEN INVALIDE');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Token non reconnu sur le serveur maître.')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Token non reconnu sur le serveur maître.')),
+        );
+      }
     }
   }
 
@@ -1115,18 +1139,24 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
             encryptedLink: data['encryptedLink'],
             deviceLimit: 1,
           );
-          setState(() => currentServer = newServer);
+          if (mounted) {
+            setState(() => currentServer = newServer);
+          }
           _saveCurrentServer();
           _addLog('ESSAI 1 GO ACTIVÉ AVEC SUCCÈS');
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Pass 1 Go / 24h activé avec succès !')),
-          );
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Pass 1 Go / 24h activé avec succès !')),
+            );
+          }
           return;
         } else {
           _addLog('NOTE ANTI-FRAUDE: ${data['error']}');
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('${data['error']}')),
-          );
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('${data['error']}')),
+            );
+          }
           return;
         }
       } catch (_) {}
@@ -1152,12 +1182,16 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
         expiresAt: DateTime.now().add(const Duration(days: 30)),
         encryptedLink: clean,
       );
-      setState(() => currentServer = newServer);
+      if (mounted) {
+        setState(() => currentServer = newServer);
+      }
       _saveCurrentServer();
       _addLog('FICHIER CRYPTÉ CHARGÉ AVEC SUCCÈS');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Configuration cryptée importée avec succès !')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Configuration cryptée importée avec succès !')),
+        );
+      }
     } catch (e) {
       _addLog('ERREUR DE LECTURE DU FICHIER: $e');
     }
@@ -1194,20 +1228,20 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
             final srvConf = data['serverConfig'] ?? {};
 
             setModalState(() => _isCreatingToken = false);
+            if (!mounted) return;
             Navigator.pop(context);
 
             _addLog('CONFIGURATION ENREGISTRÉE SUR LE SERVEUR');
 
-            // Dialogue avec options
             showDialog(
               context: context,
               builder: (ctx) => AlertDialog(
                 backgroundColor: cyberCardBg,
-                title: Row(
+                title: const Row(
                   children: [
-                    const Icon(Icons.check_circle, color: cyberGreen),
-                    const SizedBox(width: 8),
-                    const Text('CONFIG CRÉÉE !', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
+                    Icon(Icons.check_circle, color: cyberGreen),
+                    SizedBox(width: 8),
+                    Text('CONFIG CRÉÉE !', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
                   ],
                 ),
                 content: Column(
@@ -1227,7 +1261,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                   TextButton.icon(
                     onPressed: () {
                       Clipboard.setData(ClipboardData(text: tokenGenerated));
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Token copié dans le presse-papier !')));
+                      ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Token copié dans le presse-papier !')));
                     },
                     icon: const Icon(Icons.copy, size: 14, color: cyberCyan),
                     label: const Text('COPIER TOKEN', style: TextStyle(color: cyberCyan, fontSize: 11)),
@@ -1235,7 +1269,6 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                   ElevatedButton(
                     onPressed: () {
                       Navigator.pop(ctx);
-                      // Activer immédiatement comme serveur actif
                       final newServer = ImportedVpnServer(
                         name: plan,
                         address: srvConf['address'] ?? 'abess-ops-hub-d-ploiement-docker.ai.studio',
@@ -1250,7 +1283,9 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                         encryptedLink: data['encryptedLink'],
                         deviceLimit: _createDeviceLimit,
                       );
-                      setState(() => currentServer = newServer);
+                      if (mounted) {
+                        setState(() => currentServer = newServer);
+                      }
                       _saveCurrentServer();
                       _addLog('SERVEUR ACTIVÉ DIRECTEMENT DANS L\'APP');
                     },
@@ -1270,9 +1305,11 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     if (!success) {
       setModalState(() => _isCreatingToken = false);
       _addLog('ERREUR DE COMMUNICATION SERVEUR');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Impossible de joindre le serveur maître.')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Impossible de joindre le serveur maître.')),
+        );
+      }
     }
   }
 
@@ -1293,6 +1330,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
 
   // Modale d'Importation
   void _showImportModal() {
+    if (!mounted) return;
     showModalBottomSheet(
       context: context,
       backgroundColor: cyberCardBg,
@@ -1317,7 +1355,6 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
               ],
             ),
             const SizedBox(height: 12),
-            // Option 1 : Token
             const Text('OPTION 1 : CLÉ TOKEN FOURNIE PAR L\'ADMINISTRATEUR', style: TextStyle(color: cyberGreen, fontSize: 11, fontWeight: FontWeight.bold)),
             const SizedBox(height: 6),
             TextField(
@@ -1349,7 +1386,6 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
             const SizedBox(height: 18),
             const Divider(color: Colors.white12),
             const SizedBox(height: 10),
-            // Option 2 : Fichier / Lien crypté
             const Text('OPTION 2 : LIEN CRYPTÉ ABESS:// OU FICHIER .ABESS', style: TextStyle(color: cyberCyan, fontSize: 11, fontWeight: FontWeight.bold)),
             const SizedBox(height: 6),
             TextField(
@@ -1379,7 +1415,6 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
               ),
             ),
             const SizedBox(height: 14),
-            // Option 3 : Test 1 Go
             OutlinedButton.icon(
               onPressed: () {
                 Navigator.pop(ctx);
@@ -1401,6 +1436,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
 
   // Modale de Création de Configuration & Token (Fixer Gigas & Expiration)
   void _showCreateConfigModal() {
+    if (!mounted) return;
     _createTokenCodeCtrl.text = 'ABESS-VIP-${math.Random().nextInt(8999) + 1000}';
     showModalBottomSheet(
       context: context,
@@ -1452,7 +1488,6 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                   ),
                 ),
                 const SizedBox(height: 14),
-                // Quota Gigas
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -1481,7 +1516,6 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                   activeColor: cyberGreen,
                   onChanged: (val) => setMState(() => _createQuotaGb = val),
                 ),
-                // Expiration
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -1510,7 +1544,6 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                   activeColor: cyberCyan,
                   onChanged: (val) => setMState(() => _createExpiryDays = val.toInt()),
                 ),
-                // Limite Appareils
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -1574,9 +1607,9 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
             Container(
               padding: const EdgeInsets.all(6),
               decoration: BoxDecoration(
-                color: cyberGreen.withOpacity(0.15),
+                color: cyberGreen.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: cyberGreen.withOpacity(0.4)),
+                border: Border.all(color: cyberGreen.withValues(alpha: 0.4)),
               ),
               child: const Icon(Icons.shield, color: cyberGreen, size: 20),
             ),
@@ -1595,7 +1628,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
           IconButton(
             onPressed: () => _openUrlSafe(_whatsappSupportUrl),
             icon: const Icon(Icons.chat_bubble_outline, color: cyberGreen),
-            tooltip: "Support WhatsApp (+237 695 14 04 19)",
+            tooltip: "Support WhatsApp ($_whatsappSupportPhone)",
           ),
           IconButton(
             onPressed: _showSpeedTestModal,
@@ -1608,11 +1641,8 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
         child: IndexedStack(
           index: _currentNavIndex,
           children: [
-            // ONGLET 1 : CONNEXION & DASHBOARD PRINCIPAL
             _buildTab1Connection(srv, usedGb, totalGb, usedPercent, remainingDays),
-            // ONGLET 2 : SERVEURS, TOKENS & MODE MULTI-PROTOCOLES (ZERO-TOKEN)
             _buildTab2ProtocolsAndTokens(srv),
-            // ONGLET 3 : OUTILS, STABILITÉ & LOGS EN DIRECT
             _buildTab3ToolsAndStability(srv),
           ],
         ),
@@ -1620,7 +1650,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           color: cyberCardBg,
-          border: Border(top: BorderSide(color: cyberCyan.withOpacity(0.25))),
+          border: Border(top: BorderSide(color: cyberCyan.withValues(alpha: 0.25))),
         ),
         child: BottomNavigationBar(
           currentIndex: _currentNavIndex,
@@ -1661,7 +1691,6 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       child: Column(
         children: [
-          // Carte de Statut du Serveur
           if (srv == null) ...[
             Container(
               width: double.infinity,
@@ -1669,16 +1698,16 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
               decoration: BoxDecoration(
                 color: cyberCardBg,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: cyberCyan.withOpacity(0.4)),
+                border: Border.all(color: cyberCyan.withValues(alpha: 0.4)),
               ),
               child: Row(
                 children: [
                   const Icon(Icons.info_outline, color: cyberCyan, size: 28),
                   const SizedBox(width: 12),
-                  Expanded(
+                  const Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      children: const [
+                      children: [
                         Text("AUCUN SERVEUR CONFIGURÉ", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
                         SizedBox(height: 2),
                         Text("Importez un token ou configurez un serveur dans l'onglet Serveurs.", style: TextStyle(color: Colors.white60, fontSize: 10)),
@@ -1707,7 +1736,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
               decoration: BoxDecoration(
                 color: cyberCardBg,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: cyberGreen.withOpacity(0.35)),
+                border: Border.all(color: cyberGreen.withValues(alpha: 0.35)),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1751,14 +1780,13 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
             const SizedBox(height: 14),
           ],
 
-          // Alerte Quota / Expiration si applicable
           if (srv != null && (srv.isExpired || srv.isQuotaExceeded || srv.usedPercentage >= 80)) ...[
             Container(
               width: double.infinity,
               margin: const EdgeInsets.only(bottom: 14),
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: (srv.isExpired || srv.isQuotaExceeded) ? cyberRed.withOpacity(0.12) : cyberYellow.withOpacity(0.12),
+                color: (srv.isExpired || srv.isQuotaExceeded) ? cyberRed.withValues(alpha: 0.12) : cyberYellow.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: (srv.isExpired || srv.isQuotaExceeded) ? cyberRed : cyberYellow),
               ),
@@ -1798,7 +1826,6 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
             ),
           ],
 
-          // GRAND CADRAN TACTILE POWER
           GestureDetector(
             onTap: isConnecting ? null : _toggleVpn,
             child: AnimatedBuilder(
@@ -1820,7 +1847,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                     boxShadow: [
                       if (isConnected)
                         BoxShadow(
-                          color: cyberGreen.withOpacity(0.3 + pulseVal * 0.3),
+                          color: cyberGreen.withValues(alpha: 0.3 + pulseVal * 0.3),
                           blurRadius: 30,
                           spreadRadius: 4,
                         ),
@@ -1858,7 +1885,6 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
           ),
           const SizedBox(height: 12),
 
-          // Chronomètre de session & IP
           Text(
             _formatTimer(_connectionDurationSeconds),
             style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900, letterSpacing: 2),
@@ -1879,14 +1905,13 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
           ),
           const SizedBox(height: 16),
 
-          // JAUGE DE CONSOMMATION DES GIGAS
           if (srv != null) ...[
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
                 color: cyberCardBg,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: cyberGreen.withOpacity(0.25)),
+                border: Border.all(color: cyberGreen.withValues(alpha: 0.25)),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1933,7 +1958,6 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
             const SizedBox(height: 12),
           ],
 
-          // GRILLE DES DÉBITS EN DIRECT & PING RÉEL
           Row(
             children: [
               Expanded(
@@ -1958,6 +1982,10 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                       Text(
                         isConnected ? "${_currentDownloadSpeed.toStringAsFixed(2)} Mo/s" : "0.00 Mo/s",
                         style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                      ),
+                      Text(
+                        "Total: ${_totalDownloadMb.toStringAsFixed(1)} Mo",
+                        style: const TextStyle(color: Colors.white38, fontSize: 8),
                       ),
                     ],
                   ),
@@ -1987,6 +2015,10 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                         isConnected ? "${_currentUploadSpeed.toStringAsFixed(2)} Mo/s" : "0.00 Mo/s",
                         style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
                       ),
+                      Text(
+                        "Total: ${_totalUploadMb.toStringAsFixed(1)} Mo",
+                        style: const TextStyle(color: Colors.white38, fontSize: 8),
+                      ),
                     ],
                   ),
                 ),
@@ -2012,8 +2044,12 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        "${_currentPingMs} ms",
+                        "$_currentPingMs ms",
                         style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                      ),
+                      const Text(
+                        "Serv. Maître",
+                        style: TextStyle(color: Colors.white38, fontSize: 8),
                       ),
                     ],
                   ),
@@ -2023,7 +2059,6 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
           ),
           const SizedBox(height: 12),
 
-          // Graphique de Trafic fl_chart
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
@@ -2067,7 +2102,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                           barWidth: 2,
                           isStrokeCapRound: true,
                           dotData: const FlDotData(show: false),
-                          belowBarData: BarAreaData(show: true, color: cyberCyan.withOpacity(0.12)),
+                          belowBarData: BarAreaData(show: true, color: cyberCyan.withValues(alpha: 0.12)),
                         ),
                         LineChartBarData(
                           spots: _speedHistoryUpload,
@@ -2076,7 +2111,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                           barWidth: 2,
                           isStrokeCapRound: true,
                           dotData: const FlDotData(show: false),
-                          belowBarData: BarAreaData(show: true, color: cyberGreen.withOpacity(0.08)),
+                          belowBarData: BarAreaData(show: true, color: cyberGreen.withValues(alpha: 0.08)),
                         ),
                       ],
                     ),
@@ -2099,20 +2134,19 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Section 1 : Activation par Token Commercial
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: cyberCardBg,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: cyberGreen.withOpacity(0.35)),
+              border: Border.all(color: cyberGreen.withValues(alpha: 0.35)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: const [
+                const Row(
+                  children: [
                     Icon(Icons.vpn_key, color: cyberGreen, size: 18),
                     SizedBox(width: 8),
                     Text("ACTIVATION PAR CLÉ TOKEN", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 1.1)),
@@ -2133,8 +2167,8 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                           filled: true,
                           fillColor: const Color(0xFF030712),
                           contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: cyberGreen.withOpacity(0.4))),
-                          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.white24)),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: cyberGreen.withValues(alpha: 0.4))),
+                          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Colors.white24)),
                           focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: cyberGreen)),
                         ),
                       ),
@@ -2172,14 +2206,13 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
           ),
           const SizedBox(height: 16),
 
-          // Section 2 : Mode Multi-Protocoles Autonome (En cas d'absence de Token)
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: cyberCardBg,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: cyberCyan.withOpacity(0.4)),
+              border: Border.all(color: cyberCyan.withValues(alpha: 0.4)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -2187,8 +2220,8 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Row(
-                      children: const [
+                    const Row(
+                      children: [
                         Icon(Icons.tune, color: cyberCyan, size: 18),
                         SizedBox(width: 8),
                         Text("MODE SANS TOKEN (MULTI-PROTOCOLES)", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 1.1)),
@@ -2196,7 +2229,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                     ),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                      decoration: BoxDecoration(color: cyberCyan.withOpacity(0.2), borderRadius: BorderRadius.circular(8)),
+                      decoration: BoxDecoration(color: cyberCyan.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(8)),
                       child: const Text("AUTONOME", style: TextStyle(color: cyberCyan, fontSize: 9, fontWeight: FontWeight.bold)),
                     ),
                   ],
@@ -2205,7 +2238,6 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                 const Text("En cas d'absence de token, configurez directement vos paramètres de connexion pour n'importe quel protocole et transport.", style: TextStyle(color: Colors.white60, fontSize: 10)),
                 const SizedBox(height: 14),
 
-                // Sélecteur de Protocole
                 const Text("PROTOCOLE RÉSEAU", style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 6),
                 Row(
@@ -2221,7 +2253,6 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                 ),
                 const SizedBox(height: 12),
 
-                // Sélecteur de Transport
                 const Text("TRANSPORT STREAM", style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 6),
                 Row(
@@ -2237,7 +2268,6 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                 ),
                 const SizedBox(height: 14),
 
-                // Champs Hôte & Port
                 Row(
                   children: [
                     Expanded(
@@ -2253,7 +2283,6 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                 ),
                 const SizedBox(height: 10),
 
-                // Champs Path & SNI Host
                 Row(
                   children: [
                     Expanded(
@@ -2267,7 +2296,6 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                 ),
                 const SizedBox(height: 10),
 
-                // UUID / Password avec bouton Générer
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -2296,7 +2324,6 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                 ),
                 const SizedBox(height: 14),
 
-                // Bouton d'Activation Custom
                 ElevatedButton.icon(
                   onPressed: _saveCustomServerManual,
                   icon: const Icon(Icons.flash_on, color: Colors.black, size: 16),
@@ -2312,7 +2339,6 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
           ),
           const SizedBox(height: 16),
 
-          // Section 3 : Importation par Lien Brut Universel
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(16),
@@ -2378,14 +2404,13 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Carte Speed Test Cyber Intégré
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: cyberCardBg,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: cyberCyan.withOpacity(0.35)),
+              border: Border.all(color: cyberCyan.withValues(alpha: 0.35)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -2393,8 +2418,8 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Row(
-                      children: const [
+                    const Row(
+                      children: [
                         Icon(Icons.speed, color: cyberCyan, size: 18),
                         SizedBox(width: 8),
                         Text("SPEED TEST CYBER INTÉGRÉ", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
@@ -2420,7 +2445,6 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
           ),
           const SizedBox(height: 14),
 
-          // Interrupteurs de Stabilité & Vitesse
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(16),
@@ -2435,34 +2459,31 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                 const Text("PARAMÈTRES DE PERFORMANCE & STABILITÉ", style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 12),
 
-                // Multiplexage TCP (Mux)
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   value: _isMuxEnabled,
                   onChanged: (val) => setState(() => _isMuxEnabled = val),
-                  activeColor: cyberGreen,
+                  activeTrackColor: cyberGreen,
                   title: const Text("Multiplexage TCP (Mux)", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
                   subtitle: const Text("Réutilise la même connexion TCP pour charger les pages 2x plus vite.", style: TextStyle(color: Colors.white54, fontSize: 10)),
                 ),
                 const Divider(color: Colors.white12),
 
-                // Kill Switch
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   value: isKillSwitchEnabled,
                   onChanged: (val) => setState(() => isKillSwitchEnabled = val),
-                  activeColor: cyberRed,
+                  activeTrackColor: cyberRed,
                   title: const Text("Kill Switch Anti-Fuite", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
                   subtitle: const Text("Coupe automatiquement le trafic si le tunnel VPN se déconnecte.", style: TextStyle(color: Colors.white54, fontSize: 10)),
                 ),
                 const Divider(color: Colors.white12),
 
-                // Auto-Reconnect
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   value: isAutoReconnectEnabled,
                   onChanged: (val) => setState(() => isAutoReconnectEnabled = val),
-                  activeColor: cyberYellow,
+                  activeTrackColor: cyberYellow,
                   title: const Text("Reconnexion Automatique", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
                   subtitle: const Text("Tente de reconnecter le VPN automatiquement en cas de perte de réseau.", style: TextStyle(color: Colors.white54, fontSize: 10)),
                 ),
@@ -2471,7 +2492,6 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
           ),
           const SizedBox(height: 14),
 
-          // Terminal des Logs en Direct
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(14),
@@ -2521,34 +2541,47 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
           ),
           const SizedBox(height: 14),
 
-          // Assistance WhatsApp
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
               color: cyberCardBg,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: cyberGreen.withOpacity(0.4)),
+              border: Border.all(color: cyberGreen.withValues(alpha: 0.4)),
             ),
-            child: Row(
+            child: Column(
               children: [
-                const Icon(Icons.support_agent, color: cyberGreen, size: 28),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: const [
-                      Text("ASSISTANCE TECHNIQUE DIRECTE", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
-                      SizedBox(height: 2),
-                      Text("WhatsApp : +237 695 14 04 19", style: TextStyle(color: Colors.white60, fontSize: 10)),
-                    ],
-                  ),
+                Row(
+                  children: [
+                    const Icon(Icons.support_agent, color: cyberGreen, size: 28),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text("ASSISTANCE TECHNIQUE DIRECTE", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                          SizedBox(height: 2),
+                          Text("WhatsApp : $_whatsappSupportPhone", style: TextStyle(color: Colors.white60, fontSize: 10)),
+                        ],
+                      ),
+                    ),
+                    ElevatedButton.icon(
+                      onPressed: () => _openUrlSafe(_whatsappSupportUrl),
+                      icon: const Icon(Icons.chat, color: Colors.black, size: 14),
+                      label: const Text("CHAT", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 10)),
+                      style: ElevatedButton.styleFrom(backgroundColor: cyberGreen),
+                    ),
+                  ],
                 ),
-                ElevatedButton.icon(
-                  onPressed: () => _openUrlSafe(_whatsappSupportUrl),
-                  icon: const Icon(Icons.chat, color: Colors.black, size: 14),
-                  label: const Text("CHAT", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 10)),
-                  style: ElevatedButton.styleFrom(backgroundColor: cyberGreen),
+                const SizedBox(height: 10),
+                OutlinedButton.icon(
+                  onPressed: () => _openUrlSafe(_whatsappCommunityUrl),
+                  icon: const Icon(Icons.groups, color: cyberCyan, size: 16),
+                  label: const Text("REJOINDRE LA COMMUNAUTÉ WHATSAPP", style: TextStyle(color: cyberCyan, fontSize: 10, fontWeight: FontWeight.bold)),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: cyberCyan),
+                    minimumSize: const Size.fromHeight(36),
+                  ),
                 ),
               ],
             ),
@@ -2558,7 +2591,6 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     );
   }
 
-  // Helpers pour les sélecteurs de protocoles et transports
   Widget _buildProtocolChip(String id, String label) {
     final isSelected = _customProtocol == id;
     return Expanded(
@@ -2567,7 +2599,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 8),
           decoration: BoxDecoration(
-            color: isSelected ? cyberCyan.withOpacity(0.25) : const Color(0xFF030712),
+            color: isSelected ? cyberCyan.withValues(alpha: 0.25) : const Color(0xFF030712),
             borderRadius: BorderRadius.circular(8),
             border: Border.all(color: isSelected ? cyberCyan : Colors.white12),
           ),
@@ -2594,7 +2626,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 8),
           decoration: BoxDecoration(
-            color: isSelected ? cyberGreen.withOpacity(0.25) : const Color(0xFF030712),
+            color: isSelected ? cyberGreen.withValues(alpha: 0.25) : const Color(0xFF030712),
             borderRadius: BorderRadius.circular(8),
             border: Border.all(color: isSelected ? cyberGreen : Colors.white12),
           ),

@@ -27,10 +27,10 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
-    - assets/logo.png
+    - assets/abess_vpn_logo.svg
 
 flutter_launcher_icons:
   android: "launcher_icon"
   ios: false
-  image_path: "assets/logo.png"
+  image_path: "assets/abess_vpn_logo.svg"
   min_sdk_android: 21
