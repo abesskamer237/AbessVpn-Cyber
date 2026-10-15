@@ -803,9 +803,9 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
 
   // Formatters
   String _formatTimer(int totalSecs) {
-    final h = (totalSecs ~/ 3600).toString().padStart(2, '0');
-    final m = ((totalSecs % 3600) ~/ 60).toString().padStart(2, '0');
-    final s = (totalSecs % 60).toString().padStart(2, '0');
+    final h = (totalSecs ~/ 3600).toString().padLeft(2, '0');
+    final m = ((totalSecs % 3600) ~/ 60).toString().padLeft(2, '0');
+    final s = (totalSecs % 60).toString().padLeft(2, '0');
     return '$h:$m:$s';
   }
 
