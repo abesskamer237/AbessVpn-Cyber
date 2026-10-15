@@ -8,6 +8,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:fl_chart/fl_chart.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -87,6 +88,41 @@ class MainVpnScreen extends StatefulWidget {
 }
 
 class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProviderStateMixin {
+  // Historique Télémétrie Graphique (fl_chart)
+  final List<FlSpot> _speedHistoryDownload = [
+    const FlSpot(0, 0),
+    const FlSpot(1, 0.4),
+    const FlSpot(2, 1.2),
+    const FlSpot(3, 0.9),
+    const FlSpot(4, 2.5),
+    const FlSpot(5, 1.8),
+    const FlSpot(6, 3.2),
+  ];
+  final List<FlSpot> _speedHistoryUpload = [
+    const FlSpot(0, 0),
+    const FlSpot(1, 0.2),
+    const FlSpot(2, 0.6),
+    const FlSpot(3, 0.4),
+    const FlSpot(4, 1.1),
+    const FlSpot(5, 0.8),
+    const FlSpot(6, 1.4),
+  ];
+
+  void _showToast(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message, style: const TextStyle(color: Colors.white, fontSize: 12)),
+        backgroundColor: const Color(0xFF0F172A),
+        duration: const Duration(seconds: 3),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: const BorderSide(color: Color(0xFF06B6D4), width: 0.8),
+        ),
+      ),
+    );
+  }
   // Palette Cyberpunk
   static const Color cyberGreen = Color(0xFF10B981);
   static const Color cyberCyan = Color(0xFF06B6D4);
@@ -247,6 +283,9 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
 
   // URLs Serveurs Maîtres AbessVpn
   final List<String> _masterServerUrls = [
+    'https://ais-pre-byhlddl5hshwycdttmipl7-953522022413.europe-west2.run.app',
+    'https://ais-dev-byhlddl5hshwycdttmipl7-953522022413.europe-west2.run.app',
+    'https://abess-ops-hub-d-ploiement-docker-1.ai.studio',
     'https://ais-pre-23z4ejavtx4qwesb3fw46m-293855677478.us-west2.run.app',
     'https://abess-ops-hub-d-ploiement-docker.ai.studio',
     'https://ais-dev-23z4ejavtx4qwesb3fw46m-293855677478.us-west2.run.app',
@@ -446,6 +485,22 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
         final secMb = (_currentDownloadSpeed + _currentUploadSpeed);
         _totalDownloadMb += _currentDownloadSpeed;
         _totalUploadMb += _currentUploadSpeed;
+
+        // Actualiser l'historique du graphique en temps réel
+        _speedHistoryDownload.add(FlSpot(_speedHistoryDownload.length.toDouble(), _currentDownloadSpeed));
+        if (_speedHistoryDownload.length > 15) {
+          _speedHistoryDownload.removeAt(0);
+          for (int i = 0; i < _speedHistoryDownload.length; i++) {
+            _speedHistoryDownload[i] = FlSpot(i.toDouble(), _speedHistoryDownload[i].y);
+          }
+        }
+        _speedHistoryUpload.add(FlSpot(_speedHistoryUpload.length.toDouble(), _currentUploadSpeed));
+        if (_speedHistoryUpload.length > 15) {
+          _speedHistoryUpload.removeAt(0);
+          for (int i = 0; i < _speedHistoryUpload.length; i++) {
+            _speedHistoryUpload[i] = FlSpot(i.toDouble(), _speedHistoryUpload[i].y);
+          }
+        }
 
         if (currentServer != null) {
           final addedGb = secMb / 1024.0;
