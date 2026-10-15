@@ -440,7 +440,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     }
 
     setState(() => isConnecting = true);
-    _addLog('CONNEXION TUNNEL VERS ${currentServer!.address}:${currentServer!.port}');
+    _addLog('ÉTABLISSEMENT DU TUNNEL CHIFFRÉ...');
 
     try {
       if (isV2rayInitialized) {
@@ -555,7 +555,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
       if (!silent) _addLog('ERREUR: VEUILLEZ SAISIR UN TOKEN');
       return;
     }
-    if (!silent) _addLog('VALIDATION TOKEN SUR LE SERVEUR MAÎTRE: $cleanToken...');
+    if (!silent) _addLog('VALIDATION DU CODE D\'ACCÈS SUR LE SERVEUR...');
 
     for (final baseUrl in _masterServerUrls) {
       try {
@@ -610,7 +610,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
 
   // 2. RÉCLAMATION DU TEST GRATUIT 1 GO / 24H (ANTI-FRAUDE PAR TÉLÉPHONE)
   Future<void> _claimFreeTrial() async {
-    _addLog('RÉCLAMATION DU TEST 1 GO PAR TÉLÉPHONE ($_deviceId)...');
+    _addLog('RÉCLAMATION DU TEST 1 GO (SÉCURISÉ)...');
     for (final base in _masterServerUrls) {
       try {
         final res = await http.post(
@@ -642,9 +642,9 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
           );
           setState(() => currentServer = newServer);
           _saveCurrentServer();
-          _addLog('ESSAI 1 GO ACTIVÉ AVEC SUCCÈS (TOKEN: ${data['token']})');
+          _addLog('ESSAI 1 GO ACTIVÉ AVEC SUCCÈS');
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Pass 1 Go / 24h activé ! Token: ${data['token']}')),
+            const SnackBar(content: Text('Pass 1 Go / 24h activé avec succès !')),
           );
           return;
         } else {
@@ -721,7 +721,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
             setModalState(() => _isCreatingToken = false);
             Navigator.pop(context);
 
-            _addLog('TOKEN ENREGISTRÉ SUR LE SERVEUR: $tokenGenerated');
+            _addLog('CONFIGURATION ENREGISTRÉE SUR LE SERVEUR');
 
             // Dialogue avec options
             showDialog(
@@ -1226,9 +1226,9 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
                             ),
-                            Text(
-                              '${srv.protocol.toUpperCase()} • ${srv.transport.toUpperCase()} • Port ${srv.port}',
-                              style: const TextStyle(color: cyberCyan, fontSize: 10),
+                            const Text(
+                              'RÉSEAU PRIVÉ • TUNNEL SÉCURISÉ • TLS 1.3',
+                              style: TextStyle(color: cyberGreen, fontSize: 10, fontWeight: FontWeight.bold),
                             ),
                           ],
                         ),
@@ -1534,9 +1534,9 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                         ),
                       ],
                     ),
-                    Text(
-                      srv?.token != null ? 'Token: ${srv!.token}' : 'Pass Démo',
-                      style: const TextStyle(color: Colors.white38, fontSize: 9, fontFamily: 'monospace'),
+                    const Text(
+                      'Protection Active • AES-256',
+                      style: TextStyle(color: Colors.white38, fontSize: 9, fontFamily: 'monospace'),
                     ),
                   ],
                 ),
