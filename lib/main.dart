@@ -1309,7 +1309,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                               style: TextStyle(
                                 color: isConnected ? cyberGreen : Colors.white70,
                                 fontSize: 11,
-                                fontWeight: FontWeight.black,
+                                fontWeight: FontWeight.w900,
                                 letterSpacing: 1.5,
                               ),
                             ),
@@ -1325,7 +1325,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
               // Chronomètre de session & IP Virtuelle
               Text(
                 _formatTimer(_connectionDurationSeconds),
-                style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.black, letterSpacing: 2),
+                style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: 2),
               ),
               const SizedBox(height: 4),
               Row(
