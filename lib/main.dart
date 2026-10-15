@@ -128,6 +128,107 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
   int _createDeviceLimit = 1;
   bool _isCreatingToken = false;
 
+  // 3 ONGLETS CYBER NAVIGATION
+  int _currentNavIndex = 0;
+  bool _isMuxEnabled = true;
+
+  // MODE MULTI-PROTOCOLES AUTONOME (SANS TOKEN)
+  String _customProtocol = "vless";
+  String _customTransport = "ws";
+  final TextEditingController _customHostCtrl = TextEditingController(text: "konoyves.shop");
+  final TextEditingController _customPortCtrl = TextEditingController(text: "443");
+  final TextEditingController _customPathCtrl = TextEditingController(text: "/@abess237");
+  final TextEditingController _customUuidCtrl = TextEditingController(text: "abe55237-0237-4237-8237-ab3552370237");
+  final TextEditingController _customSniCtrl = TextEditingController(text: "crashlyticsreports-pa.googleapis.com");
+  final TextEditingController _customNameCtrl = TextEditingController(text: "Serveur Cyber Personnalisé");
+  final TextEditingController _rawLinkInputCtrl = TextEditingController();
+
+  void _generateRandomUuid() {
+    final rand = math.Random();
+    String s(int len) => List.generate(len, (_) => rand.nextInt(16).toRadixString(16)).join();
+    final newUuid = "${s(8)}-${s(4)}-4${s(3)}-${(8 + rand.nextInt(4)).toRadixString(16)}${s(3)}-${s(12)}";
+    setState(() => _customUuidCtrl.text = newUuid);
+    _showToast("Nouvel UUID conforme généré !");
+  }
+
+  void _saveCustomServerManual() {
+    final host = _customHostCtrl.text.trim();
+    if (host.isEmpty) {
+      _showToast("Veuillez indiquer un hôte ou une IP");
+      return;
+    }
+    final port = int.tryParse(_customPortCtrl.text.trim()) ?? 443;
+    final uuid = _customUuidCtrl.text.trim().isEmpty ? "abe55237-0237-4237-8237-ab3552370237" : _customUuidCtrl.text.trim();
+    final path = _customPathCtrl.text.trim().isEmpty ? "/@abess237" : _customPathCtrl.text.trim();
+    final sni = _customSniCtrl.text.trim().isEmpty ? host : _customSniCtrl.text.trim();
+    final name = _customNameCtrl.text.trim().isEmpty ? "Custom ($_customProtocol/$_customTransport)" : _customNameCtrl.text.trim();
+
+    final customSrv = ImportedVpnServer(
+      name: name,
+      address: host,
+      port: port,
+      path: path,
+      sni: sni,
+      uuid: uuid,
+      protocol: _customProtocol,
+      transport: _customTransport,
+      bandwidthGb: 999.0,
+      bandwidthUsedGb: 0.0,
+      expiresAt: DateTime.now().add(const Duration(days: 365)),
+      token: "CUSTOM-ZERO-TOKEN",
+    );
+
+    setState(() {
+      currentServer = customSrv;
+      _currentNavIndex = 0; // Basculer sur l'onglet de connexion
+    });
+    _saveCurrentServer();
+    _addLog("SERVEUR MULTI-PROTOCOLE ACTIF ($_customProtocol/$_customTransport)");
+    _showToast("Serveur $_customProtocol configuré avec succès ! Prêt pour connexion.");
+  }
+
+  void _parseUniversalRawLink(String raw) {
+    final link = raw.trim();
+    if (link.isEmpty) return;
+    try {
+      if (link.startsWith("vless://") || link.startsWith("vmess://") || link.startsWith("trojan://") || link.startsWith("ss://")) {
+        // Extraction basique
+        final uri = Uri.parse(link.replaceAll("#", "?tag="));
+        final proto = uri.scheme;
+        final host = uri.host;
+        final port = uri.port > 0 ? uri.port : 443;
+        final uuid = uri.userInfo;
+        final path = uri.queryParameters["path"] ?? "/@abess237";
+        final sni = uri.queryParameters["sni"] ?? host;
+
+        final newSrv = ImportedVpnServer(
+          name: uri.queryParameters["tag"] ?? "Serveur Importé ($proto)",
+          address: host.isNotEmpty ? host : "konoyves.shop",
+          port: port,
+          path: path,
+          sni: sni,
+          uuid: uuid.isNotEmpty ? uuid : "abe55237-0237-4237-8237-ab3552370237",
+          protocol: proto,
+          transport: uri.queryParameters["type"] ?? "ws",
+          bandwidthGb: 50.0,
+          bandwidthUsedGb: 0.0,
+          expiresAt: DateTime.now().add(const Duration(days: 30)),
+          token: "RAW-LINK-IMPORT",
+        );
+        setState(() {
+          currentServer = newSrv;
+          _currentNavIndex = 0;
+        });
+        _saveCurrentServer();
+        _showToast("Lien $proto importé avec succès !");
+      } else {
+        _showToast("Format de lien non reconnu");
+      }
+    } catch (e) {
+      _showToast("Erreur analyse lien: $e");
+    }
+  }
+
   // Amélioration 1 : Kill Switch & Reconnexion Auto
   bool isKillSwitchEnabled = true;
   bool isAutoReconnectEnabled = true;
@@ -1407,7 +1508,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     final usedGb = srv?.bandwidthUsedGb ?? 0.0;
     final totalGb = srv?.bandwidthGb ?? 0.0;
     final usedPercent = srv?.usedPercentage ?? 0.0;
-    final remainingDays = srv != null ? _formatRemaining(srv.expiresAt) : 'Non défini';
+    final remainingDays = srv != null ? _formatRemaining(srv.expiresAt) : "Non défini";
 
     return Scaffold(
       appBar: AppBar(
@@ -1425,829 +1526,1057 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
               child: const Icon(Icons.shield, color: cyberGreen, size: 20),
             ),
             const SizedBox(width: 10),
-            const Text(
-              'AbessVpn',
-              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
+            Text(
+              _currentNavIndex == 0
+                  ? "AbessVpn Cyber"
+                  : _currentNavIndex == 1
+                      ? "Serveurs & Protocoles"
+                      : "Outils & Diagnostic",
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 17),
             ),
           ],
         ),
         actions: [
           IconButton(
-            onPressed: _showSpeedTestModal,
-            icon: const Icon(Icons.speed, color: cyberCyan),
-            tooltip: 'Speed Test Cyber',
-          ),
-          IconButton(
             onPressed: () => _openUrlSafe(_whatsappSupportUrl),
             icon: const Icon(Icons.chat_bubble_outline, color: cyberGreen),
-            tooltip: 'Assistance WhatsApp',
+            tooltip: "Support WhatsApp (+237 695 14 04 19)",
           ),
           IconButton(
-            onPressed: _showCreateConfigModal,
-            icon: const Icon(Icons.add_box_outlined, color: cyberGreen),
-            tooltip: 'Créer Config / Token',
-          ),
-          IconButton(
-            onPressed: _showImportModal,
-            icon: const Icon(Icons.vpn_key_outlined, color: cyberCyan),
-            tooltip: 'Importer Token ou Fichier',
+            onPressed: _showSpeedTestModal,
+            icon: const Icon(Icons.speed, color: cyberCyan),
+            tooltip: "Speed Test",
           ),
         ],
       ),
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          child: Column(
-            children: [
-              // ==========================================
-              // CAS 1 : AUCUN SERVEUR CONFIGURÉ
-              // ==========================================
-              if (srv == null) ...[
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: cyberCardBg,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: cyberCyan.withOpacity(0.4)),
-                    boxShadow: [
-                      BoxShadow(color: cyberCyan.withOpacity(0.1), blurRadius: 20, spreadRadius: 2),
-                    ],
-                  ),
-                  child: Column(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: cyberCyan.withOpacity(0.15),
-                          border: Border.all(color: cyberCyan, width: 2),
-                        ),
-                        child: const Icon(Icons.lock_outline, color: cyberCyan, size: 38),
-                      ),
-                      const SizedBox(height: 14),
-                      const Text(
-                        'AUCUN SERVEUR ACTIF',
-                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15, letterSpacing: 1.5),
-                      ),
-                      const SizedBox(height: 6),
-                      const Text(
-                        'Pour protéger votre trafic, importez un accès fourni par votre administrateur (Clé Token ou Fichier crypté .abess) ou réclamez votre essai gratuit 1 Go.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.white60, fontSize: 11, height: 1.4),
-                      ),
-                      const SizedBox(height: 18),
-                      ElevatedButton.icon(
-                        onPressed: _showImportModal,
-                        icon: const Icon(Icons.vpn_key, color: Colors.black, size: 16),
-                        label: const Text('IMPORTER VIA CLÉ TOKEN', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 11)),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: cyberGreen,
-                          minimumSize: const Size.fromHeight(42),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      OutlinedButton.icon(
-                        onPressed: _claimFreeTrial,
-                        icon: const Icon(Icons.bolt, color: cyberYellow, size: 16),
-                        label: const Text('ESSAI 1 GO / 24H (1 FOIS PAR TÉLÉPHONE)', style: TextStyle(color: cyberYellow, fontWeight: FontWeight.bold, fontSize: 11)),
-                        style: OutlinedButton.styleFrom(
-                          side: const BorderSide(color: cyberYellow),
-                          minimumSize: const Size.fromHeight(42),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      TextButton.icon(
-                        onPressed: _showCreateConfigModal,
-                        icon: const Icon(Icons.add_circle_outline, color: cyberCyan, size: 16),
-                        label: const Text('CRÉER UNE CONFIGURATION / TOKEN', style: TextStyle(color: cyberCyan, fontSize: 11)),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 20),
-              ] else ...[
-                // ==========================================
-                // CAS 2 : SERVEUR IMPORTÉ & ACTIF
-                // ==========================================
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  decoration: BoxDecoration(
-                    color: cyberCardBg,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: cyberGreen.withOpacity(0.3)),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text('SERVEUR ACTIF IMPORTÉ', style: TextStyle(color: Colors.white54, fontSize: 9, letterSpacing: 1.2)),
-                            const SizedBox(height: 2),
-                            Text(
-                              srv.name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
-                            ),
-                            const Text(
-                              'RÉSEAU PRIVÉ • TUNNEL SÉCURISÉ • TLS 1.3',
-                              style: TextStyle(color: cyberGreen, fontSize: 10, fontWeight: FontWeight.bold),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Row(
-                        children: [
-                          IconButton(
-                            onPressed: _showCreateConfigModal,
-                            icon: const Icon(Icons.add_circle, color: cyberGreen, size: 22),
-                            tooltip: 'Nouveau Token',
-                          ),
-                          ElevatedButton(
-                            onPressed: _showImportModal,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.black54,
-                              foregroundColor: cyberGreen,
-                              elevation: 0,
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                                side: const BorderSide(color: cyberGreen),
-                              ),
-                            ),
-                            child: const Text('CHANGER', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 14),
-              ],
+        child: IndexedStack(
+          index: _currentNavIndex,
+          children: [
+            // ONGLET 1 : CONNEXION & DASHBOARD PRINCIPAL
+            _buildTab1Connection(srv, usedGb, totalGb, usedPercent, remainingDays),
+            // ONGLET 2 : SERVEURS, TOKENS & MODE MULTI-PROTOCOLES (ZERO-TOKEN)
+            _buildTab2ProtocolsAndTokens(srv),
+            // ONGLET 3 : OUTILS, STABILITÉ & LOGS EN DIRECT
+            _buildTab3ToolsAndStability(srv),
+          ],
+        ),
+      ),
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          color: cyberCardBg,
+          border: Border(top: BorderSide(color: cyberCyan.withOpacity(0.25))),
+        ),
+        child: BottomNavigationBar(
+          currentIndex: _currentNavIndex,
+          onTap: (index) => setState(() => _currentNavIndex = index),
+          backgroundColor: cyberCardBg,
+          selectedItemColor: cyberGreen,
+          unselectedItemColor: Colors.white38,
+          selectedFontSize: 11,
+          unselectedFontSize: 10,
+          type: BottomNavigationBarType.fixed,
+          items: const [
+            BottomNavigationBarItem(
+              icon: Icon(Icons.shield_outlined),
+              activeIcon: Icon(Icons.shield, color: cyberGreen),
+              label: "Connexion VPN",
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.tune_outlined),
+              activeIcon: Icon(Icons.tune, color: cyberCyan),
+              label: "Serveurs & Tokens",
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.speed_outlined),
+              activeIcon: Icon(Icons.speed, color: cyberGreen),
+              label: "Outils & Vitesse",
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
-              // ==========================================
-              // AMÉLIORATION 3: ALERTE QUOTA & EXPIRATION IMMINENTE
-              // ==========================================
-              if (srv != null && (srv.isExpired || srv.isQuotaExceeded || srv.usedPercentage >= 80 || srv.remainingGb <= 2.0 || srv.expiresAt.difference(DateTime.now()).inHours <= 48)) ...[
-                Builder(
-                  builder: (ctx) {
-                    final isFullExpired = srv.isExpired || srv.isQuotaExceeded;
-                    final isLowQuota = srv.usedPercentage >= 80 || srv.remainingGb <= 2.0;
-                    final hoursLeft = srv.expiresAt.difference(DateTime.now()).inHours;
-                    final isExpSoon = !srv.isExpired && hoursLeft <= 48;
-
-                    return Container(
-                      width: double.infinity,
-                      margin: const EdgeInsets.only(bottom: 14),
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: isFullExpired ? cyberRed.withOpacity(0.12) : cyberYellow.withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: isFullExpired ? cyberRed.withOpacity(0.7) : cyberYellow.withOpacity(0.7),
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            isFullExpired ? Icons.error_outline : Icons.warning_amber_rounded,
-                            color: isFullExpired ? cyberRed : cyberYellow,
-                            size: 24,
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  isFullExpired
-                                      ? (srv.isExpired ? 'FORFAIT EXPIRÉ' : 'QUOTA 100% CONSOMMÉ')
-                                      : (isLowQuota && isExpSoon
-                                          ? 'ALERTE : QUOTA FAIBLE & EXPIRATION'
-                                          : isLowQuota
-                                              ? 'ALERTE QUOTA : PLUS QUE ${srv.remainingGb.toStringAsFixed(2)} GO'
-                                              : 'EXPIRATION DANS MOINS DE ${hoursLeft > 0 ? hoursLeft : 1}H'),
-                                  style: TextStyle(
-                                    color: isFullExpired ? cyberRed : cyberYellow,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w900,
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  isFullExpired
-                                      ? 'Votre connexion est restreinte. Renouvelez votre forfait ou contactez le support WhatsApp.'
-                                      : 'Pensez à renouveler votre pass pour maintenir votre sécurité active sans interruption.',
-                                  style: const TextStyle(color: Colors.white70, fontSize: 9),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          ElevatedButton.icon(
-                            onPressed: () => _openUrlSafe(_whatsappSupportUrl),
-                            icon: const Icon(Icons.chat, size: 12, color: Colors.black),
-                            label: const Text('RECHARGER', style: TextStyle(color: Colors.black, fontSize: 9, fontWeight: FontWeight.bold)),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: isFullExpired ? cyberRed : cyberYellow,
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                              minimumSize: Size.zero,
-                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-              ],
-
-              // 2. GRAND CADRAN TACTILE POWER
-              GestureDetector(
-                onTap: isConnecting ? null : _toggleVpn,
-                child: AnimatedBuilder(
-                  animation: _pulseController,
-                  builder: (ctx, child) {
-                    final pulseVal = isConnected ? _pulseController.value : 0.0;
-                    return Container(
-                      width: 170,
-                      height: 170,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: isConnected
-                            ? Color.lerp(const Color(0xFF042F24), const Color(0xFF064E3B), pulseVal)
-                            : const Color(0xFF0B132B),
-                        border: Border.all(
-                          color: isConnected ? cyberGreen : Colors.white24,
-                          width: 4,
-                        ),
-                        boxShadow: [
-                          if (isConnected)
-                            BoxShadow(
-                              color: cyberGreen.withOpacity(0.3 + pulseVal * 0.3),
-                              blurRadius: 30,
-                              spreadRadius: 4,
-                            ),
-                        ],
-                      ),
-                      child: Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.power_settings_new,
-                              size: 48,
-                              color: isConnected ? cyberGreen : (srv != null ? Colors.white70 : Colors.white24),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              isConnecting
-                                  ? 'CONNEXION...'
-                                  : isConnected
-                                      ? 'CONNECTÉ'
-                                      : (srv != null ? 'ACTIVER' : 'AUCUN ACCÈS'),
-                              style: TextStyle(
-                                color: isConnected ? cyberGreen : Colors.white70,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 1.5,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                ),
+  // ==========================================================================
+  // ONGLET 1 : CONNEXION VPN & DASHBOARD PRINCIPAL
+  // ==========================================================================
+  Widget _buildTab1Connection(ImportedVpnServer? srv, double usedGb, double totalGb, double usedPercent, String remainingDays) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Column(
+        children: [
+          // Carte de Statut du Serveur
+          if (srv == null) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: cyberCardBg,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: cyberCyan.withOpacity(0.4)),
               ),
-
-              const SizedBox(height: 14),
-              // Chronomètre de session & IP Virtuelle
-              Text(
-                _formatTimer(_connectionDurationSeconds),
-                style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: 2),
-              ),
-              const SizedBox(height: 4),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+              child: Row(
                 children: [
-                  const Text('IP TUNNEL : ', style: TextStyle(color: Colors.white38, fontSize: 10)),
-                  Text(isConnected ? _virtualIp : 'EN VEILLE', style: const TextStyle(color: cyberGreen, fontSize: 10, fontWeight: FontWeight.bold)),
-                  const SizedBox(width: 10),
-                  const Text('• HWID : ', style: TextStyle(color: Colors.white38, fontSize: 10)),
-                  Text(
-                    _deviceId.length > 12 ? _deviceId.substring(0, 12) + '...' : _deviceId,
-                    style: const TextStyle(color: cyberCyan, fontSize: 10),
+                  const Icon(Icons.info_outline, color: cyberCyan, size: 28),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: const [
+                        Text("AUCUN SERVEUR CONFIGURÉ", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                        SizedBox(height: 2),
+                        Text("Importez un token ou configurez un serveur dans l'onglet Serveurs.", style: TextStyle(color: Colors.white60, fontSize: 10)),
+                      ],
+                    ),
+                  ),
+                  ElevatedButton(
+                    onPressed: () => setState(() => _currentNavIndex = 1),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: cyberCyan,
+                      foregroundColor: Colors.black,
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      minimumSize: Size.zero,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    child: const Text("CONFIGURER", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
                   ),
                 ],
               ),
+            ),
+            const SizedBox(height: 14),
+          ] else ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: cyberCardBg,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: cyberGreen.withOpacity(0.35)),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text("SERVEUR ACTIF IMPORTÉ", style: TextStyle(color: Colors.white54, fontSize: 9, letterSpacing: 1.2)),
+                        const SizedBox(height: 2),
+                        Text(
+                          srv.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                        ),
+                        Text(
+                          "${srv.protocol.toUpperCase()} • ${srv.transport.toUpperCase()} • TLS 1.3 CHIFFRÉ",
+                          style: const TextStyle(color: cyberGreen, fontSize: 10, fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                  ),
+                  ElevatedButton(
+                    onPressed: () => setState(() => _currentNavIndex = 1),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.black54,
+                      foregroundColor: cyberGreen,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        side: const BorderSide(color: cyberGreen),
+                      ),
+                    ),
+                    child: const Text("CHANGER", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+          ],
 
-              const SizedBox(height: 18),
+          // Alerte Quota / Expiration si applicable
+          if (srv != null && (srv.isExpired || srv.isQuotaExceeded || srv.usedPercentage >= 80)) ...[
+            Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(bottom: 14),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: (srv.isExpired || srv.isQuotaExceeded) ? cyberRed.withOpacity(0.12) : cyberYellow.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: (srv.isExpired || srv.isQuotaExceeded) ? cyberRed : cyberYellow),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    (srv.isExpired || srv.isQuotaExceeded) ? Icons.error_outline : Icons.warning_amber_rounded,
+                    color: (srv.isExpired || srv.isQuotaExceeded) ? cyberRed : cyberYellow,
+                    size: 22,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      (srv.isExpired || srv.isQuotaExceeded)
+                          ? "FORFAIT EXPIRÉ OU QUOTA ÉPUISÉ"
+                          : "ATTENTION : Plus que ${srv.remainingGb.toStringAsFixed(1)} Go restants",
+                      style: TextStyle(
+                        color: (srv.isExpired || srv.isQuotaExceeded) ? cyberRed : cyberYellow,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  ElevatedButton(
+                    onPressed: () => _openUrlSafe(_whatsappSupportUrl),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: (srv.isExpired || srv.isQuotaExceeded) ? cyberRed : cyberYellow,
+                      foregroundColor: Colors.black,
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      minimumSize: Size.zero,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                    ),
+                    child: const Text("RECHARGER", style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              ),
+            ),
+          ],
 
-              // 3. JAUGE DE CONSOMMATION DES GIGAS (GIGAS UTILISÉS / QUOTA TOTAL)
-              if (srv != null) ...[
-                Container(
-                  padding: const EdgeInsets.all(14),
+          // GRAND CADRAN TACTILE POWER
+          GestureDetector(
+            onTap: isConnecting ? null : _toggleVpn,
+            child: AnimatedBuilder(
+              animation: _pulseController,
+              builder: (ctx, child) {
+                final pulseVal = isConnected ? _pulseController.value : 0.0;
+                return Container(
+                  width: 165,
+                  height: 165,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: isConnected
+                        ? Color.lerp(const Color(0xFF042F24), const Color(0xFF064E3B), pulseVal)
+                        : const Color(0xFF0B132B),
+                    border: Border.all(
+                      color: isConnected ? cyberGreen : Colors.white24,
+                      width: 4,
+                    ),
+                    boxShadow: [
+                      if (isConnected)
+                        BoxShadow(
+                          color: cyberGreen.withOpacity(0.3 + pulseVal * 0.3),
+                          blurRadius: 30,
+                          spreadRadius: 4,
+                        ),
+                    ],
+                  ),
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.power_settings_new,
+                          size: 46,
+                          color: isConnected ? cyberGreen : (srv != null ? Colors.white70 : Colors.white24),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          isConnecting
+                              ? "CONNEXION..."
+                              : isConnected
+                                  ? "CONNECTÉ"
+                                  : (srv != null ? "ACTIVER" : "AUCUN ACCÈS"),
+                          style: TextStyle(
+                            color: isConnected ? cyberGreen : Colors.white70,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 1.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // Chronomètre de session & IP
+          Text(
+            _formatTimer(_connectionDurationSeconds),
+            style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900, letterSpacing: 2),
+          ),
+          const SizedBox(height: 4),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text("IP TUNNEL : ", style: TextStyle(color: Colors.white38, fontSize: 10)),
+              Text(isConnected ? _virtualIp : "EN VEILLE", style: const TextStyle(color: cyberGreen, fontSize: 10, fontWeight: FontWeight.bold)),
+              const SizedBox(width: 10),
+              const Text("• HWID : ", style: TextStyle(color: Colors.white38, fontSize: 10)),
+              Text(
+                _deviceId.length > 10 ? "${_deviceId.substring(0, 10)}..." : _deviceId,
+                style: const TextStyle(color: cyberCyan, fontSize: 10),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // JAUGE DE CONSOMMATION DES GIGAS
+          if (srv != null) ...[
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: cyberCardBg,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: cyberGreen.withOpacity(0.25)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(Icons.pie_chart, color: cyberGreen, size: 14),
+                          SizedBox(width: 4),
+                          Text("GIGAS UTILISÉS / QUOTA", style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                      Text(
+                        "${usedGb.toStringAsFixed(2)} Go / ${totalGb.toStringAsFixed(1)} Go (${usedPercent.toInt()}%)",
+                        style: const TextStyle(color: cyberGreen, fontSize: 11, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: LinearProgressIndicator(
+                      value: totalGb > 0 ? (usedPercent / 100.0) : 0.0,
+                      minHeight: 8,
+                      backgroundColor: Colors.black45,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        usedPercent > 85 ? cyberRed : usedPercent > 60 ? cyberYellow : cyberGreen,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text("Restant: ${(totalGb - usedGb).toStringAsFixed(2)} Go", style: const TextStyle(color: cyberCyan, fontSize: 10, fontWeight: FontWeight.bold)),
+                      Text("Expire : $remainingDays", style: const TextStyle(color: Colors.white60, fontSize: 10)),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+
+          // GRILLE DES DÉBITS EN DIRECT & PING RÉEL
+          Row(
+            children: [
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: cyberCardBg,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: cyberGreen.withOpacity(0.25)),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: Colors.white10),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      const Row(
                         children: [
-                          const Row(
-                            children: [
-                              Icon(Icons.pie_chart, color: cyberGreen, size: 14),
-                              SizedBox(width: 4),
-                              Text('GIGAS UTILISÉS / QUOTA', style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold)),
-                            ],
-                          ),
-                          Text(
-                            '${usedGb.toStringAsFixed(2)} Go / ${totalGb.toStringAsFixed(1)} Go (${usedPercent.toInt()}%)',
-                            style: const TextStyle(color: cyberGreen, fontSize: 11, fontWeight: FontWeight.bold),
-                          ),
+                          Icon(Icons.arrow_downward, color: cyberCyan, size: 14),
+                          SizedBox(width: 4),
+                          Text("DÉBIT DL", style: TextStyle(color: Colors.white54, fontSize: 9, fontWeight: FontWeight.bold)),
                         ],
                       ),
-                      const SizedBox(height: 8),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: LinearProgressIndicator(
-                          value: totalGb > 0 ? (usedPercent / 100.0) : 0.0,
-                          minHeight: 10,
-                          backgroundColor: Colors.black45,
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            usedPercent > 85 ? cyberRed : usedPercent > 60 ? cyberYellow : cyberGreen,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text('Restant: ${(totalGb - usedGb).toStringAsFixed(2)} Go', style: const TextStyle(color: cyberCyan, fontSize: 10, fontWeight: FontWeight.bold)),
-                          Text('Expire : $remainingDays', style: const TextStyle(color: Colors.white60, fontSize: 10)),
-                        ],
+                      const SizedBox(height: 4),
+                      Text(
+                        isConnected ? "${_currentDownloadSpeed.toStringAsFixed(2)} Mo/s" : "0.00 Mo/s",
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 12),
-              ],
-
-              // 4. GRILLE DES DÉBITS EN DIRECT & PING RÉEL
-              Row(
-                children: [
-                  // Vitesse Download
-                  Expanded(
-                    child: Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: cyberCardBg,
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: Colors.white10),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Row(
-                            children: [
-                              Icon(Icons.arrow_downward, color: cyberCyan, size: 14),
-                              SizedBox(width: 4),
-                              Text('DÉBIT DL', style: TextStyle(color: Colors.white54, fontSize: 9, fontWeight: FontWeight.bold)),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '${_currentDownloadSpeed.toStringAsFixed(1)} Mo/s',
-                            style: const TextStyle(color: cyberCyan, fontSize: 14, fontWeight: FontWeight.bold),
-                          ),
-                          Text(
-                            'Total: ${_totalDownloadMb >= 1024 ? (_totalDownloadMb / 1024).toStringAsFixed(2) + ' Go' : _totalDownloadMb.toStringAsFixed(1) + ' Mo'}',
-                            style: const TextStyle(color: Colors.white38, fontSize: 9),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  // Vitesse Upload
-                  Expanded(
-                    child: Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: cyberCardBg,
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: Colors.white10),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Row(
-                            children: [
-                              Icon(Icons.arrow_upward, color: cyberGreen, size: 14),
-                              SizedBox(width: 4),
-                              Text('DÉBIT UL', style: TextStyle(color: Colors.white54, fontSize: 9, fontWeight: FontWeight.bold)),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '${_currentUploadSpeed.toStringAsFixed(1)} Mo/s',
-                            style: const TextStyle(color: cyberGreen, fontSize: 14, fontWeight: FontWeight.bold),
-                          ),
-                          Text(
-                            'Total: ${_totalUploadMb >= 1024 ? (_totalUploadMb / 1024).toStringAsFixed(2) + ' Go' : _totalUploadMb.toStringAsFixed(1) + ' Mo'}',
-                            style: const TextStyle(color: Colors.white38, fontSize: 9),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  // Latence Ping
-                  Expanded(
-                    child: Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: cyberCardBg,
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: Colors.white10),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Row(
-                            children: [
-                              Icon(Icons.bolt, color: cyberYellow, size: 14),
-                              SizedBox(width: 4),
-                              Text('LATENCE', style: TextStyle(color: Colors.white54, fontSize: 9, fontWeight: FontWeight.bold)),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '$_currentPingMs ms',
-                            style: TextStyle(
-                              color: _currentPingMs < 60 ? cyberGreen : _currentPingMs < 120 ? cyberYellow : cyberRed,
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          Text(
-                            _currentPingMs < 60 ? 'Excellente' : 'Moyenne',
-                            style: const TextStyle(color: Colors.white38, fontSize: 9),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
               ),
-
-              const SizedBox(height: 14),
-
-              // ==========================================
-              // AMÉLIORATION 1: KILL SWITCH & RECONNEXION AUTO
-              // ==========================================
-              if (killSwitchAlert) ...[
-                Container(
-                  width: double.infinity,
+              const SizedBox(width: 8),
+              Expanded(
+                child: Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: cyberRed.withOpacity(0.18),
+                    color: cyberCardBg,
                     borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: cyberRed),
+                    border: Border.all(color: Colors.white10),
                   ),
-                  child: const Row(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(Icons.shield_outlined, color: cyberRed, size: 22),
-                      SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          'KILL SWITCH DÉCLENCHÉ : Tout trafic internet non chiffré est bloqué pour protéger vos données contre les fuites.',
-                          style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
-                        ),
+                      const Row(
+                        children: [
+                          Icon(Icons.arrow_upward, color: cyberGreen, size: 14),
+                          SizedBox(width: 4),
+                          Text("DÉBIT UL", style: TextStyle(color: Colors.white54, fontSize: 9, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        isConnected ? "${_currentUploadSpeed.toStringAsFixed(2)} Mo/s" : "0.00 Mo/s",
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 10),
-              ],
-
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: cyberCardBg,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: cyberCyan.withOpacity(0.3)),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Row(
-                          children: [
-                            Icon(Icons.security, color: cyberCyan, size: 14),
-                            SizedBox(width: 6),
-                            Text(
-                              'SÉCURITÉ AVANCÉE & PROTECTION CYBER',
-                              style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold),
-                            ),
-                          ],
-                        ),
-                        Text('PROTECTION ACTIVE', style: TextStyle(color: cyberGreen, fontSize: 9, fontWeight: FontWeight.bold)),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    // Kill Switch Switch
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('Kill Switch Anti-Fuite', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
-                              Text('Bloque le réseau si la connexion s\'interrompt', style: TextStyle(color: Colors.white38, fontSize: 9)),
-                            ],
-                          ),
-                        ),
-                        Switch(
-                          value: isKillSwitchEnabled,
-                          activeColor: cyberCyan,
-                          onChanged: (val) async {
-                            final prefs = await SharedPreferences.getInstance();
-                            await prefs.setBool('abess_kill_switch', val);
-                            setState(() => isKillSwitchEnabled = val);
-                            _addLog('KILL SWITCH: ${val ? "ACTIVÉ" : "DÉSACTIVÉ"}');
-                          },
-                        ),
-                      ],
-                    ),
-                    const Divider(color: Colors.white12, height: 12),
-                    // Auto Reconnect Switch
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('Reconnexion Automatique', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
-                              Text('Rétablit automatiquement le tunnel en cas de coupure', style: TextStyle(color: Colors.white38, fontSize: 9)),
-                            ],
-                          ),
-                        ),
-                        Switch(
-                          value: isAutoReconnectEnabled,
-                          activeColor: cyberGreen,
-                          onChanged: (val) async {
-                            final prefs = await SharedPreferences.getInstance();
-                            await prefs.setBool('abess_auto_reconnect', val);
-                            setState(() => isAutoReconnectEnabled = val);
-                            _addLog('RECONNEXION AUTO: ${val ? "ACTIVÉE" : "DÉSACTIVÉE"}');
-                          },
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
               ),
-
-              const SizedBox(height: 12),
-
-              // ==========================================
-              // AMÉLIORATION 2: TESTEUR DE DÉBIT CYBER CARD
-              // ==========================================
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF041424),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: cyberCyan.withOpacity(0.5)),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: cyberCyan.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Icon(Icons.speed, color: cyberCyan, size: 24),
-                    ),
-                    const SizedBox(width: 12),
-                    const Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+              const SizedBox(width: 8),
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: cyberCardBg,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: Colors.white10),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Row(
                         children: [
-                          Text('SPEED TEST EN DIRECT', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
-                          SizedBox(height: 2),
-                          Text('Mesurez votre débit réel et le ping vers le serveur maître', style: TextStyle(color: Colors.white60, fontSize: 9)),
+                          Icon(Icons.wifi, color: cyberYellow, size: 14),
+                          SizedBox(width: 4),
+                          Text("PING MS", style: TextStyle(color: Colors.white54, fontSize: 9, fontWeight: FontWeight.bold)),
                         ],
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    ElevatedButton(
-                      onPressed: _showSpeedTestModal,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: cyberCyan,
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      const SizedBox(height: 4),
+                      Text(
+                        "${_currentPingMs} ms",
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
                       ),
-                      child: const Text('TESTER', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 10)),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 12),
-
-              // ==========================================
-              // AMÉLIORATION 5: SUPPORT CLIENT & COMMUNAUTÉ WHATSAPP
-              // ==========================================
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF052B1D), Color(0xFF03160F), Color(0xFF010805)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
+                    ],
                   ),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: cyberGreen.withOpacity(0.5)),
-                  boxShadow: [
-                    BoxShadow(color: cyberGreen.withOpacity(0.08), blurRadius: 20, spreadRadius: 1),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(
-                            color: cyberGreen.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Icon(Icons.forum_outlined, color: cyberGreen, size: 16),
-                        ),
-                        const SizedBox(width: 8),
-                        const Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'COMMUNAUTÉ & ASSISTANCE WHATSAPP',
-                                style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
-                              ),
-                              Text(
-                                'Échangez avec les abonnés ou contactez le support 24/7',
-                                style: TextStyle(color: Colors.white60, fontSize: 9),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        // Bouton 1: Rejoindre le groupe
-                        Expanded(
-                          child: ElevatedButton.icon(
-                            onPressed: () => _openUrlSafe(_whatsappCommunityUrl),
-                            icon: const Icon(Icons.groups, size: 14, color: Colors.black),
-                            label: const Text(
-                              'COMMUNAUTÉ',
-                              style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900, fontSize: 10),
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: cyberGreen,
-                              padding: const EdgeInsets.symmetric(vertical: 10),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        // Bouton 2: Assistance direct
-                        Expanded(
-                          child: ElevatedButton.icon(
-                            onPressed: () => _openUrlSafe(_whatsappSupportUrl),
-                            icon: const Icon(Icons.phone, size: 14, color: Colors.black),
-                            label: const Text(
-                              'ASSISTANCE 24/7',
-                              style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900, fontSize: 10),
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: cyberCyan,
-                              padding: const EdgeInsets.symmetric(vertical: 10),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 14),
-
-              // 5. BANDEAU DE CHIFFREMENT & MOTEUR VPN
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                decoration: BoxDecoration(
-                  color: Colors.black38,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.white12),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(Icons.security, size: 16, color: isConnected ? cyberGreen : Colors.white38),
-                        const SizedBox(width: 8),
-                        Text(
-                          isConnected ? 'TUNNEL CHIFFRÉ ACTIF (AES-256)' : 'EN ATTENTE D\'ACTIVATION',
-                          style: TextStyle(
-                            color: isConnected ? cyberGreen : Colors.white54,
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const Text(
-                      'Protection Active • AES-256',
-                      style: TextStyle(color: Colors.white38, fontSize: 9, fontFamily: 'monospace'),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 14),
-
-              // 6. JOURNAL DES LOGS TERMINAL
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.black,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: cyberGreen.withOpacity(0.3)),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text('TERMINAL KERNEL EN DIRECT', style: TextStyle(color: cyberGreen, fontSize: 9, fontWeight: FontWeight.bold)),
-                        Row(
-                          children: [
-                            Container(width: 6, height: 6, decoration: const BoxDecoration(shape: BoxShape.circle, color: cyberGreen)),
-                            const SizedBox(width: 4),
-                            const Text('SYNCHRONISÉ', style: TextStyle(color: cyberGreen, fontSize: 8)),
-                          ],
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    SizedBox(
-                      height: 85,
-                      child: ListView.builder(
-                        itemCount: _logs.length,
-                        itemBuilder: (ctx, idx) => Text(
-                          _logs[idx],
-                          style: const TextStyle(color: Colors.white70, fontSize: 9, fontFamily: 'monospace'),
-                        ),
-                      ),
-                    ),
-                  ],
                 ),
               ),
             ],
           ),
+          const SizedBox(height: 12),
+
+          // Graphique de Trafic fl_chart
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: cyberCardBg,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white10),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text("MONITEUR BANDE PASSANTE TEMPS RÉEL", style: TextStyle(color: Colors.white54, fontSize: 9, fontWeight: FontWeight.bold)),
+                    Row(
+                      children: [
+                        Icon(Icons.circle, color: cyberCyan, size: 8),
+                        SizedBox(width: 4),
+                        Text("Download", style: TextStyle(color: Colors.white60, fontSize: 9)),
+                        SizedBox(width: 8),
+                        Icon(Icons.circle, color: cyberGreen, size: 8),
+                        SizedBox(width: 4),
+                        Text("Upload", style: TextStyle(color: Colors.white60, fontSize: 9)),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  height: 100,
+                  child: LineChart(
+                    LineChartData(
+                      gridData: const FlGridData(show: false),
+                      titlesData: const FlTitlesData(show: false),
+                      borderData: FlBorderData(show: false),
+                      lineBarsData: [
+                        LineChartBarData(
+                          spots: _speedHistoryDownload,
+                          isCurved: true,
+                          color: cyberCyan,
+                          barWidth: 2,
+                          isStrokeCapRound: true,
+                          dotData: const FlDotData(show: false),
+                          belowBarData: BarAreaData(show: true, color: cyberCyan.withOpacity(0.12)),
+                        ),
+                        LineChartBarData(
+                          spots: _speedHistoryUpload,
+                          isCurved: true,
+                          color: cyberGreen,
+                          barWidth: 2,
+                          isStrokeCapRound: true,
+                          dotData: const FlDotData(show: false),
+                          belowBarData: BarAreaData(show: true, color: cyberGreen.withOpacity(0.08)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ==========================================================================
+  // ONGLET 2 : STUDIO SERVEURS, TOKENS & MODE MULTI-PROTOCOLES (ZERO-TOKEN)
+  // ==========================================================================
+  Widget _buildTab2ProtocolsAndTokens(ImportedVpnServer? srv) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Section 1 : Activation par Token Commercial
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: cyberCardBg,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: cyberGreen.withOpacity(0.35)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: const [
+                    Icon(Icons.vpn_key, color: cyberGreen, size: 18),
+                    SizedBox(width: 8),
+                    Text("ACTIVATION PAR CLÉ TOKEN", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 1.1)),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                const Text("Saisissez votre code licence fourni par votre revendeur officiel pour activer votre accès sécurisé.", style: TextStyle(color: Colors.white60, fontSize: 10)),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _tokenInputCtrl,
+                        style: const TextStyle(color: cyberGreen, fontFamily: "monospace", fontSize: 12),
+                        decoration: InputDecoration(
+                          hintText: "EX: ABESS-VIP-ROOT-2026",
+                          hintStyle: const TextStyle(color: Colors.white30, fontSize: 11),
+                          filled: true,
+                          fillColor: const Color(0xFF030712),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: cyberGreen.withOpacity(0.4))),
+                          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.white24)),
+                          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: cyberGreen)),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      onPressed: () {
+                        if (_tokenInputCtrl.text.isNotEmpty) {
+                          _importServerByToken(_tokenInputCtrl.text);
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: cyberGreen,
+                        foregroundColor: Colors.black,
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      child: const Text("VALIDER", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                OutlinedButton.icon(
+                  onPressed: _claimFreeTrial,
+                  icon: const Icon(Icons.bolt, color: cyberYellow, size: 16),
+                  label: const Text("RÉCLAMER MON ESSAI GRATUIT 1 GO / 24H", style: TextStyle(color: cyberYellow, fontWeight: FontWeight.bold, fontSize: 11)),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: cyberYellow),
+                    minimumSize: const Size.fromHeight(38),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Section 2 : Mode Multi-Protocoles Autonome (En cas d'absence de Token)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: cyberCardBg,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: cyberCyan.withOpacity(0.4)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: const [
+                        Icon(Icons.tune, color: cyberCyan, size: 18),
+                        SizedBox(width: 8),
+                        Text("MODE SANS TOKEN (MULTI-PROTOCOLES)", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 1.1)),
+                      ],
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(color: cyberCyan.withOpacity(0.2), borderRadius: BorderRadius.circular(8)),
+                      child: const Text("AUTONOME", style: TextStyle(color: cyberCyan, fontSize: 9, fontWeight: FontWeight.bold)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                const Text("En cas d'absence de token, configurez directement vos paramètres de connexion pour n'importe quel protocole et transport.", style: TextStyle(color: Colors.white60, fontSize: 10)),
+                const SizedBox(height: 14),
+
+                // Sélecteur de Protocole
+                const Text("PROTOCOLE RÉSEAU", style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    _buildProtocolChip("vless", "VLESS (Recommandé)"),
+                    const SizedBox(width: 6),
+                    _buildProtocolChip("vmess", "VMess"),
+                    const SizedBox(width: 6),
+                    _buildProtocolChip("trojan", "Trojan"),
+                    const SizedBox(width: 6),
+                    _buildProtocolChip("shadowsocks", "Shadowsocks"),
+                  ],
+                ),
+                const SizedBox(height: 12),
+
+                // Sélecteur de Transport
+                const Text("TRANSPORT STREAM", style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    _buildTransportChip("ws", "WebSocket (ws)"),
+                    const SizedBox(width: 6),
+                    _buildTransportChip("grpc", "gRPC"),
+                    const SizedBox(width: 6),
+                    _buildTransportChip("xhttp", "HTTPUpgrade"),
+                    const SizedBox(width: 6),
+                    _buildTransportChip("tcp", "TCP Direct"),
+                  ],
+                ),
+                const SizedBox(height: 14),
+
+                // Champs Hôte & Port
+                Row(
+                  children: [
+                    Expanded(
+                      flex: 2,
+                      child: _buildFormField("Hôte / Domaine / IP", _customHostCtrl, "ex: konoyves.shop"),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      flex: 1,
+                      child: _buildFormField("Port", _customPortCtrl, "443"),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+
+                // Champs Path & SNI Host
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildFormField("Chemin WebSocket / xHTTP", _customPathCtrl, "/@abess237"),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _buildFormField("SNI Bug Host (Zero-Rating)", _customSniCtrl, "crashlyticsreports-pa.googleapis.com"),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+
+                // UUID / Password avec bouton Générer
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text("Identifiant UUID / Mot de passe", style: TextStyle(color: Colors.white60, fontSize: 10)),
+                        GestureDetector(
+                          onTap: _generateRandomUuid,
+                          child: const Text("Générer UUID Aléatoire", style: TextStyle(color: cyberCyan, fontSize: 10, fontWeight: FontWeight.bold)),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    TextField(
+                      controller: _customUuidCtrl,
+                      style: const TextStyle(color: cyberCyan, fontFamily: "monospace", fontSize: 11),
+                      decoration: InputDecoration(
+                        filled: true,
+                        fillColor: const Color(0xFF030712),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+
+                // Bouton d'Activation Custom
+                ElevatedButton.icon(
+                  onPressed: _saveCustomServerManual,
+                  icon: const Icon(Icons.flash_on, color: Colors.black, size: 16),
+                  label: const Text("ACTIVER CE SERVEUR PERSONNEL", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 11)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: cyberCyan,
+                    minimumSize: const Size.fromHeight(42),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Section 3 : Importation par Lien Brut Universel
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: cyberCardBg,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white10),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text("IMPORTATION RAPIDE PAR LIEN BRUT", style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 4),
+                const Text("Collez un lien vless://, vmess://, trojan:// ou ss:// généré par un autre outil.", style: TextStyle(color: Colors.white54, fontSize: 10)),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _rawLinkInputCtrl,
+                        style: const TextStyle(color: Colors.white, fontSize: 11, fontFamily: "monospace"),
+                        decoration: InputDecoration(
+                          hintText: "Coller vless://... ou vmess://...",
+                          hintStyle: const TextStyle(color: Colors.white30, fontSize: 10),
+                          filled: true,
+                          fillColor: const Color(0xFF030712),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      onPressed: () {
+                        if (_rawLinkInputCtrl.text.isNotEmpty) {
+                          _parseUniversalRawLink(_rawLinkInputCtrl.text);
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.white24,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                      child: const Text("IMPORTER", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ==========================================================================
+  // ONGLET 3 : OUTILS, STABILITÉ & LOGS EN DIRECT
+  // ==========================================================================
+  Widget _buildTab3ToolsAndStability(ImportedVpnServer? srv) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Carte Speed Test Cyber Intégré
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: cyberCardBg,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: cyberCyan.withOpacity(0.35)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: const [
+                        Icon(Icons.speed, color: cyberCyan, size: 18),
+                        SizedBox(width: 8),
+                        Text("SPEED TEST CYBER INTÉGRÉ", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                      ],
+                    ),
+                    ElevatedButton(
+                      onPressed: _showSpeedTestModal,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: cyberCyan,
+                        foregroundColor: Colors.black,
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        minimumSize: Size.zero,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                      ),
+                      child: const Text("TESTER", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                const Text("Mesure en direct la latence (ping) et le débit montant/descendant vers les serveurs maîtres.", style: TextStyle(color: Colors.white60, fontSize: 10)),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+
+          // Interrupteurs de Stabilité & Vitesse
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: cyberCardBg,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white10),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text("PARAMÈTRES DE PERFORMANCE & STABILITÉ", style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 12),
+
+                // Multiplexage TCP (Mux)
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: _isMuxEnabled,
+                  onChanged: (val) => setState(() => _isMuxEnabled = val),
+                  activeColor: cyberGreen,
+                  title: const Text("Multiplexage TCP (Mux)", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                  subtitle: const Text("Réutilise la même connexion TCP pour charger les pages 2x plus vite.", style: TextStyle(color: Colors.white54, fontSize: 10)),
+                ),
+                const Divider(color: Colors.white12),
+
+                // Kill Switch
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: isKillSwitchEnabled,
+                  onChanged: (val) => setState(() => isKillSwitchEnabled = val),
+                  activeColor: cyberRed,
+                  title: const Text("Kill Switch Anti-Fuite", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                  subtitle: const Text("Coupe automatiquement le trafic si le tunnel VPN se déconnecte.", style: TextStyle(color: Colors.white54, fontSize: 10)),
+                ),
+                const Divider(color: Colors.white12),
+
+                // Auto-Reconnect
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: isAutoReconnectEnabled,
+                  onChanged: (val) => setState(() => isAutoReconnectEnabled = val),
+                  activeColor: cyberYellow,
+                  title: const Text("Reconnexion Automatique", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                  subtitle: const Text("Tente de reconnecter le VPN automatiquement en cas de perte de réseau.", style: TextStyle(color: Colors.white54, fontSize: 10)),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+
+          // Terminal des Logs en Direct
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: cyberCardBg,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white10),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Row(
+                      children: [
+                        Icon(Icons.terminal, color: cyberGreen, size: 14),
+                        SizedBox(width: 4),
+                        Text("JOURNAL SYSTÈME V2RAY", style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                    GestureDetector(
+                      onTap: () => setState(() => _logs.clear()),
+                      child: const Text("Effacer", style: TextStyle(color: Colors.white38, fontSize: 10)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  height: 140,
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF030712),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.white12),
+                  ),
+                  child: ListView.builder(
+                    itemCount: _logs.length,
+                    itemBuilder: (ctx, idx) => Text(
+                      _logs[idx],
+                      style: const TextStyle(color: cyberGreen, fontSize: 9, fontFamily: "monospace"),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+
+          // Assistance WhatsApp
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: cyberCardBg,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: cyberGreen.withOpacity(0.4)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.support_agent, color: cyberGreen, size: 28),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: const [
+                      Text("ASSISTANCE TECHNIQUE DIRECTE", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                      SizedBox(height: 2),
+                      Text("WhatsApp : +237 695 14 04 19", style: TextStyle(color: Colors.white60, fontSize: 10)),
+                    ],
+                  ),
+                ),
+                ElevatedButton.icon(
+                  onPressed: () => _openUrlSafe(_whatsappSupportUrl),
+                  icon: const Icon(Icons.chat, color: Colors.black, size: 14),
+                  label: const Text("CHAT", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 10)),
+                  style: ElevatedButton.styleFrom(backgroundColor: cyberGreen),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Helpers pour les sélecteurs de protocoles et transports
+  Widget _buildProtocolChip(String id, String label) {
+    final isSelected = _customProtocol == id;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => setState(() => _customProtocol = id),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: isSelected ? cyberCyan.withOpacity(0.25) : const Color(0xFF030712),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: isSelected ? cyberCyan : Colors.white12),
+          ),
+          child: Center(
+            child: Text(
+              label.split(" ")[0],
+              style: TextStyle(
+                color: isSelected ? cyberCyan : Colors.white60,
+                fontSize: 10,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
+          ),
         ),
       ),
+    );
+  }
+
+  Widget _buildTransportChip(String id, String label) {
+    final isSelected = _customTransport == id;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => setState(() => _customTransport = id),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: isSelected ? cyberGreen.withOpacity(0.25) : const Color(0xFF030712),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: isSelected ? cyberGreen : Colors.white12),
+          ),
+          child: Center(
+            child: Text(
+              label.split(" ")[0],
+              style: TextStyle(
+                color: isSelected ? cyberGreen : Colors.white60,
+                fontSize: 10,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFormField(String label, TextEditingController ctrl, String hint) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(color: Colors.white60, fontSize: 10)),
+        const SizedBox(height: 4),
+        TextField(
+          controller: ctrl,
+          style: const TextStyle(color: Colors.white, fontSize: 11, fontFamily: "monospace"),
+          decoration: InputDecoration(
+            hintText: hint,
+            hintStyle: const TextStyle(color: Colors.white24, fontSize: 10),
+            filled: true,
+            fillColor: const Color(0xFF030712),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Colors.white24)),
+          ),
+        ),
+      ],
     );
   }
 }
