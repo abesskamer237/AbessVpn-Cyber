@@ -33,7 +33,7 @@ export interface ClientToken {
   connectionCount: number;
   lastSeenAt: string | null;
   lastSeenIp: string | null;
-  status: 'active' | 'revoked' | 'expired';
+  status: 'active' | 'revoked' | 'expired' | 'quota_exceeded';
 }
 
 export interface DeviceLock {
@@ -71,7 +71,7 @@ function loadTokens(): ClientToken[] {
       days: 365,
       deviceLimit: 10,
       bandwidthGb: 9999,
-      bandwidthUsedGb: 28.4,
+      bandwidthUsedGb: 14.2,
       connectionCount: 142,
       lastSeenAt: new Date().toISOString(),
       lastSeenIp: '127.0.0.1',
@@ -80,14 +80,14 @@ function loadTokens(): ClientToken[] {
     {
       id: 'tok_demo',
       token: 'ABESS-VIP-DEMO-2026',
-      plan: 'COMMERCE PRO 30J',
+      plan: 'COMMERCE PRO 50 GO',
       reseller: 'ABESS OFFICIAL DISTRIBUTOR',
       createdAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(),
       days: 30,
       deviceLimit: 2,
-      bandwidthGb: 100,
-      bandwidthUsedGb: 4.8,
+      bandwidthGb: 50,
+      bandwidthUsedGb: 3.42,
       connectionCount: 38,
       lastSeenAt: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
       lastSeenIp: '197.234.221.14',
@@ -96,14 +96,14 @@ function loadTokens(): ClientToken[] {
     {
       id: 'tok_matrix',
       token: 'CYBER-STEALTH-999',
-      plan: 'HACKER PRO ELITE 90J',
+      plan: 'HACKER PRO ELITE 100 GO',
       reseller: 'DARKNET OPS',
       createdAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 90 * 24 * 3600 * 1000).toISOString(),
       days: 90,
       deviceLimit: 5,
-      bandwidthGb: 500,
-      bandwidthUsedGb: 82.1,
+      bandwidthGb: 100,
+      bandwidthUsedGb: 18.6,
       connectionCount: 97,
       lastSeenAt: new Date(Date.now() - 4 * 60 * 1000).toISOString(),
       lastSeenIp: '102.16.89.201',
@@ -129,7 +129,7 @@ function loadDevices(): DeviceLock[] {
   }
   const sample: DeviceLock[] = [
     {
-      id: 'dev_' + Math.random().toString(36).substring(2, 9),
+      id: 'dev_sample_1',
       fingerprint: 'HWID-SM-G998B-ANDROID14-AE89F1',
       ip: '102.244.18.92',
       model: 'Samsung Galaxy S21 Ultra',
@@ -161,17 +161,16 @@ export function encryptConfigPayload(plainJson: object): string {
   const jsonStr = JSON.stringify(plainJson);
   let encrypted = cipher.update(jsonStr, 'utf8', 'base64');
   encrypted += cipher.final('base64');
-  // Format: abess://<iv_base64>.<encrypted_base64>
   return `abess://${iv.toString('base64')}.${encrypted}`;
 }
 
 export function decryptConfigPayload(abessLink: string): any {
   if (!abessLink.startsWith('abess://')) {
-    throw new Error('Format de lien invalide (doit commencer par abess://)');
+    throw new Error('Format de configuration invalide (doit débuter par abess://)');
   }
   const parts = abessLink.replace('abess://', '').split('.');
   if (parts.length !== 2) {
-    throw new Error('Structure du lien crypté corrompue');
+    throw new Error('Structure cryptographique corrompue');
   }
   const iv = Buffer.from(parts[0], 'base64');
   const encrypted = parts[1];
@@ -183,7 +182,7 @@ export function decryptConfigPayload(abessLink: string): any {
 
 // Live metrics
 let activeTunnelConnections = 0;
-let totalBytesTransferred = 1024 * 1024 * 380; // 380 MB
+let totalBytesTransferred = 1024 * 1024 * 410; // 410 MB
 const startTime = Date.now();
 
 async function startServer() {
@@ -204,11 +203,11 @@ async function startServer() {
 
   const server = http.createServer(app);
 
-  // 1. Mobile App Auth API
+  // 1. Mobile & Web App Auth API (Token import with exact Go Quota & Expiry date)
   app.post('/api/v1/auth/token', (req, res) => {
     const rawToken = req.body?.token?.toString()?.trim();
     if (!rawToken) {
-      res.status(400).json({ valid: false, error: 'Token missing' });
+      res.status(400).json({ valid: false, error: 'Token manquant' });
       return;
     }
 
@@ -216,114 +215,152 @@ async function startServer() {
     const found = tokens.find(t => t.token.toUpperCase() === rawToken.toUpperCase());
     const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.socket.remoteAddress || 'unknown';
 
-    if (found && found.status === 'active') {
+    if (found) {
+      // Check expiration
+      const now = Date.now();
+      const expiryTime = new Date(found.expiresAt).getTime();
+      if (now > expiryTime) {
+        found.status = 'expired';
+        saveTokens(tokens);
+        res.status(403).json({
+          valid: false,
+          error: `Licence expirée depuis le ${new Date(found.expiresAt).toLocaleDateString()}. Veuillez renouveler votre abonnement.`,
+          status: 'expired',
+          expiresAt: found.expiresAt
+        });
+        return;
+      }
+
+      // Check quota
+      if (found.bandwidthUsedGb >= found.bandwidthGb) {
+        found.status = 'quota_exceeded';
+        saveTokens(tokens);
+        res.status(403).json({
+          valid: false,
+          error: `Quota de données épuisé (${found.bandwidthUsedGb.toFixed(2)} Go / ${found.bandwidthGb} Go). Contactez votre revendeur.`,
+          status: 'quota_exceeded',
+          bandwidthGb: found.bandwidthGb,
+          bandwidthUsedGb: found.bandwidthUsedGb
+        });
+        return;
+      }
+
       found.connectionCount = (found.connectionCount || 0) + 1;
       found.lastSeenAt = new Date().toISOString();
       found.lastSeenIp = clientIp;
       saveTokens(tokens);
 
-      const daysRemaining = Math.max(0, Math.ceil((new Date(found.expiresAt).getTime() - Date.now()) / (1000 * 3600 * 24)));
+      const msRemaining = Math.max(0, expiryTime - now);
+      const daysRemaining = Math.ceil(msRemaining / (1000 * 3600 * 24));
+      const hoursRemaining = Math.ceil(msRemaining / (1000 * 3600));
       const host = req.get('host') || 'abess-ops-hub-d-ploiement-docker.ai.studio';
 
       res.json({
         valid: true,
+        token: found.token,
         plan: found.plan,
         reseller: found.reseller,
+        createdAt: found.createdAt,
         expiresAt: found.expiresAt,
         daysRemaining: daysRemaining,
+        hoursRemaining: hoursRemaining,
         deviceLimit: found.deviceLimit,
         bandwidthGb: found.bandwidthGb,
-        servers: [
-          {
-            id: 'srv_primary_cloud',
-            name: '⚡ ABESSVPN PRIMARY CORE (PARIS/CDN)',
-            flag: '⚡',
-            address: host,
-            port: 443,
-            path: '/@abess237',
-            sni: host,
-            region: 'GLOBAL CDN',
-            pingMs: 16
-          },
-          {
-            id: 'srv_paris_bypass',
-            name: '🇫🇷 PARIS ZERO-LOG BYPASS',
-            flag: '🇫🇷',
-            address: host,
-            port: 443,
-            path: '/@abess237',
-            sni: 'crashlyticsreports-pa.googleapis.com',
-            region: 'EUROPE',
-            pingMs: 25
-          },
-          {
-            id: 'srv_frankfurt_stealth',
-            name: '🇩🇪 FRANKFURT STEALTH VIP',
-            flag: '🇩🇪',
-            address: host,
-            port: 443,
-            path: '/@abess237',
-            sni: host,
-            region: 'EUROPE',
-            pingMs: 22
-          },
-          {
-            id: 'srv_free_daily',
-            name: '🎁 SERVEUR TEST GRATUIT 1 GO / 24H',
-            flag: '🎁',
-            address: host,
-            port: 443,
-            path: '/@abess237',
-            sni: 'crashlyticsreports-pa.googleapis.com',
-            region: 'SECURE TEST GATE',
-            pingMs: 19
-          }
-        ]
+        bandwidthUsedGb: Number(found.bandwidthUsedGb.toFixed(2)),
+        bandwidthRemainingGb: Number(Math.max(0, found.bandwidthGb - found.bandwidthUsedGb).toFixed(2)),
+        status: found.status,
+        serverConfig: {
+          address: host,
+          port: 443,
+          path: '/@abess237',
+          uuid: 'abe55237-0237-4237-8237-ab3552370237',
+          sni: 'crashlyticsreports-pa.googleapis.com',
+          protocol: 'vless',
+          transport: 'ws',
+          security: 'tls'
+        }
       });
       return;
     }
 
+    // Dynamic generation if token is long enough (guest/fallback)
     if (rawToken.length >= 8) {
       res.json({
         valid: true,
+        token: rawToken,
         plan: 'ABESSVPN VIP DYNAMIC',
         reseller: 'ABESS DISTRIBUTOR',
+        createdAt: new Date().toISOString(),
         expiresAt: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(),
         daysRemaining: 30,
+        hoursRemaining: 720,
         deviceLimit: 2,
-        bandwidthGb: 100.0,
-        servers: [
-          {
-            id: 'srv_primary_cloud',
-            name: '⚡ ABESSVPN PRIMARY CORE',
-            flag: '⚡',
-            address: req.get('host') || 'abess-ops-hub-d-ploiement-docker.ai.studio',
-            port: 443,
-            path: '/@abess237',
-            sni: req.get('host') || 'abess-ops-hub-d-ploiement-docker.ai.studio',
-            region: 'GLOBAL CDN',
-            pingMs: 18
-          }
-        ]
+        bandwidthGb: 50.0,
+        bandwidthUsedGb: 0.0,
+        bandwidthRemainingGb: 50.0,
+        status: 'active',
+        serverConfig: {
+          address: req.get('host') || 'abess-ops-hub-d-ploiement-docker.ai.studio',
+          port: 443,
+          path: '/@abess237',
+          uuid: 'abe55237-0237-4237-8237-ab3552370237',
+          sni: 'crashlyticsreports-pa.googleapis.com',
+          protocol: 'vless',
+          transport: 'ws',
+          security: 'tls'
+        }
       });
       return;
     }
 
-    res.status(401).json({ valid: false, error: 'Token invalide ou révoqué' });
+    res.status(401).json({ valid: false, error: 'Token non reconnu ou introuvable.' });
   });
 
-  // 2. Anti-Abuse Test Server (1 Go / 24h) with Hardware Lock
+  // 2. Real-time Bandwidth & Traffic Reporting
+  app.post('/api/v1/telemetry/traffic', (req, res) => {
+    const { token, bytesTransferred } = req.body;
+    if (!token || !bytesTransferred) {
+      res.status(400).json({ error: 'Missing parameters' });
+      return;
+    }
+
+    const tokens = loadTokens();
+    const found = tokens.find(t => t.token.toUpperCase() === token.toString().toUpperCase());
+    if (found) {
+      const addedGb = bytesTransferred / (1024 * 1024 * 1024);
+      found.bandwidthUsedGb = Number((found.bandwidthUsedGb + addedGb).toFixed(4));
+      totalBytesTransferred += bytesTransferred;
+
+      let quotaExceeded = false;
+      if (found.bandwidthUsedGb >= found.bandwidthGb) {
+        found.status = 'quota_exceeded';
+        quotaExceeded = true;
+      }
+      saveTokens(tokens);
+
+      res.json({
+        success: true,
+        bandwidthUsedGb: Number(found.bandwidthUsedGb.toFixed(2)),
+        bandwidthRemainingGb: Number(Math.max(0, found.bandwidthGb - found.bandwidthUsedGb).toFixed(2)),
+        quotaExceeded
+      });
+      return;
+    }
+
+    res.json({ success: true });
+  });
+
+  // 3. Anti-Abuse Test Server (1 Go / 24h) with Hardware Lock
   app.post('/api/v1/test-server/claim', (req, res) => {
     const { fingerprint, model, os } = req.body;
     const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.socket.remoteAddress || 'unknown';
 
     if (!fingerprint) {
-      res.status(400).json({ error: 'Empreinte matérielle (Hardware Fingerprint) requise pour la sécurité anti-fraude.' });
+      res.status(400).json({ error: 'Empreinte matérielle (HWID) requise.' });
       return;
     }
 
     const devices = loadDevices();
-    // Check if device exists by fingerprint OR same IP
     const existing = devices.find(d => d.fingerprint === fingerprint || (d.ip === clientIp && clientIp !== '127.0.0.1' && clientIp !== '::1'));
 
     const now = Date.now();
@@ -334,7 +371,6 @@ async function startServer() {
       const timePassed = now - lastClaimTime;
 
       if (timePassed < TWENTY_FOUR_HOURS) {
-        // Within the same 24h window
         if (existing.remainingMb <= 0) {
           const hoursLeft = Math.ceil((TWENTY_FOUR_HOURS - timePassed) / (3600 * 1000));
           res.status(403).json({
@@ -346,10 +382,9 @@ async function startServer() {
           return;
         }
 
-        // Still has quota
         res.json({
           status: 'ALLOWED',
-          message: 'Session de test 1 Go en cours pour cet appareil.',
+          message: 'Session de test 1 Go active.',
           device: existing,
           quotaRemainingMb: existing.remainingMb,
           token: existing.testToken,
@@ -363,7 +398,6 @@ async function startServer() {
         });
         return;
       } else {
-        // 24h passed: reset daily 1 Go quota!
         existing.lastClaimAt = new Date().toISOString();
         existing.quotaUsedMb = 0;
         existing.remainingMb = 1024;
@@ -373,7 +407,7 @@ async function startServer() {
 
         res.json({
           status: 'RESET_GRANTED',
-          message: 'Renouvellement quotidien de 1 Go accordé avec succès !',
+          message: 'Nouveau quota quotidien de 1 Go activé !',
           device: existing,
           quotaRemainingMb: 1024,
           token: existing.testToken
@@ -382,12 +416,11 @@ async function startServer() {
       }
     }
 
-    // New device: Lock and grant initial 1 Go
     const newDevice: DeviceLock = {
       id: 'dev_' + Math.random().toString(36).substring(2, 9),
       fingerprint,
       ip: clientIp,
-      model: model || 'Appareil Mobile Non Identifié',
+      model: model || 'Smartphone Non Identifié',
       os: os || 'Système Sécurisé',
       firstSeenAt: new Date().toISOString(),
       lastClaimAt: new Date().toISOString(),
@@ -403,7 +436,7 @@ async function startServer() {
 
     res.status(201).json({
       status: 'NEW_DEVICE_REGISTERED',
-      message: 'Appareil enregistré avec succès dans la base anti-fraude. Quota de 1 Go activé pour 24h.',
+      message: 'Appareil enregistré avec succès. 1 Go activé pour 24 heures.',
       device: newDevice,
       quotaRemainingMb: 1024,
       token: newDevice.testToken,
@@ -421,22 +454,7 @@ async function startServer() {
     res.json(loadDevices());
   });
 
-  app.post('/api/v1/test-server/reset/:id', (req, res) => {
-    const devices = loadDevices();
-    const dev = devices.find(d => d.id === req.params.id);
-    if (dev) {
-      dev.remainingMb = 1024;
-      dev.quotaUsedMb = 0;
-      dev.status = 'active';
-      dev.lastClaimAt = new Date().toISOString();
-      saveDevices(devices);
-      res.json({ success: true, device: dev });
-    } else {
-      res.status(404).json({ error: 'Device not found' });
-    }
-  });
-
-  // 3. Encrypted Configuration Link Generator (`abess://...`)
+  // 4. Encrypted Configuration Link & File Generator (`abess://...`)
   app.post('/api/v1/crypto/encrypt', (req, res) => {
     try {
       const config = req.body;
@@ -450,7 +468,9 @@ async function startServer() {
         encryptedLink,
         format: 'abess://<payload>',
         cipher: 'AES-256-CBC with SHA-256 Key derivation',
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        expiresAt: config.expiresAt,
+        bandwidthGb: config.bandwidthGb
       });
     } catch (err: unknown) {
       res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
@@ -471,29 +491,32 @@ async function startServer() {
     }
   });
 
-  // 4. Token management
+  // 5. Token creation with precise Gigas & Expiration Date
   app.get('/api/v1/tokens', (req, res) => {
     res.json(loadTokens());
   });
 
   app.post('/api/v1/tokens', (req, res) => {
-    const { token, plan, reseller, days, deviceLimit, bandwidthGb } = req.body;
+    const { token, plan, reseller, days, expiresAt, deviceLimit, bandwidthGb } = req.body;
     if (!token || !plan) {
       res.status(400).json({ error: 'Token and Plan are required' });
       return;
     }
+
+    const calculatedExpiresAt = expiresAt || new Date(Date.now() + (Number(days) || 30) * 24 * 3600 * 1000).toISOString();
+    const daysRemaining = Math.max(0, Math.ceil((new Date(calculatedExpiresAt).getTime() - Date.now()) / (1000 * 3600 * 24)));
 
     const tokens = loadTokens();
     const newToken: ClientToken = {
       id: 'tok_' + Math.random().toString(36).substring(2, 9),
       token: token.toString().trim().toUpperCase(),
       plan: plan.toString().trim(),
-      reseller: (reseller || 'ABESS RESELLER').toString().trim(),
-      days: Number(days) || 30,
+      reseller: (reseller || 'ABESS DISTRIBUTOR').toString().trim(),
+      days: daysRemaining,
       createdAt: new Date().toISOString(),
-      expiresAt: new Date(Date.now() + (Number(days) || 30) * 24 * 3600 * 1000).toISOString(),
+      expiresAt: calculatedExpiresAt,
       deviceLimit: Number(deviceLimit) || 2,
-      bandwidthGb: Number(bandwidthGb) || 100,
+      bandwidthGb: Number(bandwidthGb) || 50,
       bandwidthUsedGb: 0,
       connectionCount: 0,
       lastSeenAt: null,
