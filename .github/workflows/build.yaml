@@ -26,14 +26,32 @@ jobs:
         shell: bash
         run: |
           set -e
+
+          # Generate Android platform files only if the app module is missing.
+          # Never delete or overwrite an existing Android project just to obtain
+          # the Gradle wrapper (the manifest, package ID and native config matter).
           if [ ! -f "android/app/build.gradle" ] && [ ! -f "android/app/build.gradle.kts" ]; then
-            echo "Android platform files missing. Generating Android platform..."
-            rm -rf android
-            flutter create . --org com.abessvpn --project-name abess_vpn --platforms=android
-          elif [ ! -f "android/gradlew" ]; then
-            echo "Generating missing Android Gradle wrapper without deleting existing project files..."
+            echo "Android app module missing; generating platform files..."
             flutter create . --org com.abessvpn --project-name abess_vpn --platforms=android
           fi
+
+          # Flutter projects may omit wrapper scripts/jar from version control.
+          # Create them in a disposable scaffold, then copy only the wrapper files.
+          if [ ! -f "android/gradlew" ] || [ ! -f "android/gradle/wrapper/gradle-wrapper.jar" ]; then
+            echo "Creating missing Gradle wrapper without replacing the Android project..."
+            tmp_dir="$(mktemp -d)"
+            flutter create --no-pub --org com.abessvpn --project-name abess_wrapper_seed --platforms=android "$tmp_dir/seed"
+            mkdir -p android/gradle/wrapper
+            cp "$tmp_dir/seed/android/gradlew" android/gradlew
+            cp "$tmp_dir/seed/android/gradlew.bat" android/gradlew.bat
+            cp "$tmp_dir/seed/android/gradle/wrapper/gradle-wrapper.jar" android/gradle/wrapper/gradle-wrapper.jar
+            if [ ! -f "android/gradle/wrapper/gradle-wrapper.properties" ]; then
+              cp "$tmp_dir/seed/android/gradle/wrapper/gradle-wrapper.properties" android/gradle/wrapper/gradle-wrapper.properties
+            fi
+            chmod +x android/gradlew
+            rm -rf "$tmp_dir"
+          fi
+
           if [ -f "android/app/build.gradle" ]; then
             sed -i "s/minSdkVersion.*/minSdkVersion 21/" android/app/build.gradle || true
             sed -i "s/minSdk .*/minSdk 21/" android/app/build.gradle || true
