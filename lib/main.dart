@@ -230,7 +230,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
       uuid: uuid,
       protocol: _customProtocol,
       transport: _customTransport,
-      tls: _customTlsEnabled && !{'native', 'kcp', 'mkcp'}.contains(_customTransport),
+      tls: _customTlsEnabled && !{'native', 'raw', 'tcp', 'kcp', 'mkcp'}.contains(_customTransport),
       wsHost: _customWsHostCtrl.text.trim(),
       bandwidthGb: 999.0,
       bandwidthUsedGb: 0.0,
@@ -949,6 +949,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                 (data['bandwidthUsedGb'] as num).toDouble(),
               );
             });
+            await _saveCurrentServer();
           }
         }
 
@@ -3070,14 +3071,14 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
 
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  value: _customTlsEnabled && !{'native', 'kcp', 'mkcp'}.contains(_customTransport),
+                  value: _customTlsEnabled && !{'native', 'raw', 'tcp', 'kcp', 'mkcp'}.contains(_customTransport),
                   onChanged: (enabled) {
                     if (_customProtocol == 'trojan' && !enabled) {
                       _showToast('Trojan nécessite TLS sur un serveur public.');
                       return;
                     }
                     if (!enabled && _customProtocol == 'trojan') return;
-                    if ({'native', 'kcp', 'mkcp'}.contains(_customTransport) && enabled) {
+                    if ({'native', 'raw', 'tcp', 'kcp', 'mkcp'}.contains(_customTransport) && enabled) {
                       _showToast('Ce transport direct ne prend pas en charge TLS dans ce profil.');
                       return;
                     }
@@ -3473,6 +3474,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
               _customTlsEnabled = false;
             } else if (id == 'raw') {
               _customPortCtrl.text = '10060';
+              _customTlsEnabled = false;
             } else if (id == 'kcp') {
               _customPortCtrl.text = '10061';
             } else if (oldTransport == 'native' || oldTransport == 'raw' || oldTransport == 'kcp') {
