@@ -941,6 +941,25 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     );
   }
 
+  Future<bool> _isManagedDataPlaneReady() async {
+    for (final base in _masterServerUrls) {
+      try {
+        final response = await http
+            .get(Uri.parse('$base/api/v1/ping'))
+            .timeout(const Duration(seconds: 3));
+        if (response.statusCode != 200) continue;
+
+        final payload = jsonDecode(response.body);
+        if (payload is Map && payload['dataPlane'] == 'ready') {
+          return true;
+        }
+      } catch (_) {
+        // Try the next configured control-plane endpoint.
+      }
+    }
+    return false;
+  }
+
   // Connexion / Déconnexion VPN
   Future<void> _toggleVpn() async {
     if (isConnected || isConnecting) {
@@ -967,6 +986,21 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     }
     if (currentServer!.isExpired) {
       _showExpiredAlert();
+      return;
+    }
+
+    final selectedToken = currentServer!.token;
+    final isManagedToken = selectedToken != null &&
+        selectedToken != 'CUSTOM-ZERO-TOKEN' &&
+        selectedToken != 'RAW-LINK-IMPORT';
+    if (isManagedToken && !await _isManagedDataPlaneReady()) {
+      if (mounted) setState(() {
+        isConnected = false;
+        isConnecting = false;
+        vpnStatus = 'DISCONNECTED';
+      });
+      _addLog('CONNEXION REFUSÉE : MOTEUR VLESS DU SERVEUR NON OPÉRATIONNEL');
+      _showToast('Le serveur ne confirme pas un moteur VPN opérationnel. Aucune connexion fictive ne sera affichée.');
       return;
     }
 
