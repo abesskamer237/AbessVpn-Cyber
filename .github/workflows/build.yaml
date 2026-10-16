@@ -26,14 +26,20 @@ jobs:
         shell: bash
         run: |
           set -e
-          if [ ! -f "android/gradlew" ] || [ ! -f "android/app/build.gradle" ]; then
-            echo "Android project missing. Generating platform files..."
+          if [ ! -f "android/app/build.gradle" ] && [ ! -f "android/app/build.gradle.kts" ]; then
+            echo "Android platform files missing. Generating Android platform..."
             rm -rf android
+            flutter create . --org com.abessvpn --project-name abess_vpn --platforms=android
+          elif [ ! -f "android/gradlew" ]; then
+            echo "Generating missing Android Gradle wrapper without deleting existing project files..."
             flutter create . --org com.abessvpn --project-name abess_vpn --platforms=android
           fi
           if [ -f "android/app/build.gradle" ]; then
             sed -i "s/minSdkVersion.*/minSdkVersion 21/" android/app/build.gradle || true
             sed -i "s/minSdk .*/minSdk 21/" android/app/build.gradle || true
+          fi
+          if [ -f "android/app/build.gradle.kts" ]; then
+            sed -i "s/minSdk = flutter.minSdkVersion/minSdk = 21/" android/app/build.gradle.kts || true
           fi
 
       - name: Install dependencies
@@ -43,7 +49,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y librsvg2-bin
-          rsvg-convert -w 1024 -h 1024 assets/abess_vpn_logo.svg -o assets/logo.png
+          rsvg-convert -w 1024 -h 1024 assets/abess_vpn_logo.svg -o assets/abess_vpn_logo.png
 
       - name: Generate launcher icons
         run: dart run flutter_launcher_icons
