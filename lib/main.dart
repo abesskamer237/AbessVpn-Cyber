@@ -1223,8 +1223,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
               'downlinkCapacity': 20,
               'congestion': false,
               'readBufferSize': 2,
-              'writeBufferSize': 2,
-              'header': {'type': 'none'}
+              'writeBufferSize': 2
             }
           };
           break;
