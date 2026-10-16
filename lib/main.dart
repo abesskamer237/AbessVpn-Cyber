@@ -1153,7 +1153,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
           return;
         }
 
-        final v2rayConfig = _buildV2RayVlessConfig(currentServer!);
+        final v2rayConfig = _buildXrayClientConfig(currentServer!);
         await v2ray.startV2Ray(
           remark: 'AbessVpn - ${currentServer!.name}',
           config: jsonEncode(v2rayConfig),
@@ -1210,7 +1210,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     _addLog('TUNNEL DÉCONNECTÉ');
   }
 
-  Map<String, dynamic> _buildV2RayVlessConfig(ImportedVpnServer srv) {
+  Map<String, dynamic> _buildXrayClientConfig(ImportedVpnServer srv) {
     // Les transports HTTP sont protégés par TLS sur TCP/443.
     // RAW/TCP et mKCP/UDP sont réservés à VMess (chiffrement au niveau du protocole).
     // Shadowsocks natif transporte directement TCP et UDP sur le port 10050.
@@ -1226,6 +1226,9 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     }
     if (transport == 'native' && protocol != 'shadowsocks') {
       throw UnsupportedError('Le mode TCP + UDP natif est disponible uniquement avec Shadowsocks.');
+    }
+    if (protocol == 'shadowsocks' && transport != 'native') {
+      throw UnsupportedError('Pour avoir TCP et UDP avec Shadowsocks, sélectionne le transport natif sur le port 10050.');
     }
     if ((transport == 'raw' || transport == 'kcp') && protocol != 'vmess' && srv.token != 'RAW-LINK-IMPORT') {
       throw UnsupportedError('RAW/TCP et mKCP/UDP sont réservés à VMess sur le serveur ABESS.');
@@ -2715,17 +2718,18 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
 
                 const Text("TRANSPORT STREAM", style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 6),
-                Row(
-                  children: [
-                    _buildTransportChip("ws", "WebSocket"),
-                    const SizedBox(width: 6),
-                    _buildTransportChip("grpc", "gRPC"),
-                    const SizedBox(width: 6),
-                    _buildTransportChip("httpupgrade", "HTTPUpgrade"),
-                    const SizedBox(width: 6),
-                    _buildTransportChip("xhttp", "XHTTP"),
-                  ],
-                ),
+                if (_customProtocol != "shadowsocks")
+                  Row(
+                    children: [
+                      _buildTransportChip("ws", "WebSocket"),
+                      const SizedBox(width: 6),
+                      _buildTransportChip("grpc", "gRPC"),
+                      const SizedBox(width: 6),
+                      _buildTransportChip("httpupgrade", "HTTPUpgrade"),
+                      const SizedBox(width: 6),
+                      _buildTransportChip("xhttp", "XHTTP"),
+                    ],
+                  ),
                 if (_customProtocol == "vmess") ...[
                   const SizedBox(height: 6),
                   Row(
@@ -3080,12 +3084,17 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
       child: GestureDetector(
         onTap: () => setState(() {
           final oldTransport = _customTransport;
-          final incompatibleNative = id != 'shadowsocks' && oldTransport == 'native';
-          final incompatibleDirect = id != 'vmess' && (oldTransport == 'raw' || oldTransport == 'kcp');
-          if (incompatibleNative || incompatibleDirect) {
-            _customTransport = 'ws';
-            if (['10050', '10060', '10061'].contains(_customPortCtrl.text.trim())) {
-              _customPortCtrl.text = '443';
+          if (id == 'shadowsocks') {
+            _customTransport = 'native';
+            _customPortCtrl.text = '10050';
+          } else {
+            final incompatibleNative = oldTransport == 'native';
+            final incompatibleDirect = id != 'vmess' && (oldTransport == 'raw' || oldTransport == 'kcp');
+            if (incompatibleNative || incompatibleDirect) {
+              _customTransport = 'ws';
+              if (['10050', '10060', '10061'].contains(_customPortCtrl.text.trim())) {
+                _customPortCtrl.text = '443';
+              }
             }
           }
           _customProtocol = id;
@@ -3117,6 +3126,10 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     return Expanded(
       child: GestureDetector(
         onTap: () {
+          if (_customProtocol == 'shadowsocks' && id != 'native') {
+            _showToast('Pour TCP + UDP, Shadowsocks doit utiliser le transport natif.');
+            return;
+          }
           if (id == 'native' && _customProtocol != 'shadowsocks') {
             _showToast('Le transport TCP + UDP natif nécessite Shadowsocks.');
             return;
