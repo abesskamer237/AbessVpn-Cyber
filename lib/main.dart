@@ -29,7 +29,6 @@ class ImportedVpnServer {
   final String uuid;
   final String protocol;
   final String transport;
-  final String? seed;
   final double bandwidthGb;
   double bandwidthUsedGb;
   final DateTime expiresAt;
@@ -46,7 +45,6 @@ class ImportedVpnServer {
     required this.uuid,
     this.protocol = 'vless',
     this.transport = 'ws',
-    this.seed,
     this.bandwidthGb = 10.0,
     this.bandwidthUsedGb = 0.0,
     required this.expiresAt,
@@ -184,7 +182,6 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
   final TextEditingController _customPathCtrl = TextEditingController(text: "/@abess237");
   final TextEditingController _customUuidCtrl = TextEditingController(text: "abe55237-0237-4237-8237-ab3552370237");
   final TextEditingController _customSniCtrl = TextEditingController(text: "crashlyticsreports-pa.googleapis.com");
-  final TextEditingController _customKcpSeedCtrl = TextEditingController(text: "abess237kcpseed");
   final TextEditingController _customNameCtrl = TextEditingController(text: "Serveur Cyber Personnalisé");
   final TextEditingController _rawLinkInputCtrl = TextEditingController();
 
@@ -217,7 +214,6 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
       uuid: uuid,
       protocol: _customProtocol,
       transport: _customTransport,
-      seed: _customTransport == 'mkcp' ? _customKcpSeedCtrl.text.trim() : null,
       bandwidthGb: 999.0,
       bandwidthUsedGb: 0.0,
       expiresAt: DateTime.now().add(const Duration(days: 365)),
@@ -334,7 +330,6 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     _customPathCtrl.dispose();
     _customUuidCtrl.dispose();
     _customSniCtrl.dispose();
-    _customKcpSeedCtrl.dispose();
     _customNameCtrl.dispose();
     _rawLinkInputCtrl.dispose();
     super.dispose();
@@ -453,7 +448,6 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
               uuid: map['uuid'] ?? 'abe55237-0237-4237-8237-ab3552370237',
               protocol: map['protocol']?.toString() ?? 'vless',
               transport: map['transport']?.toString() ?? 'ws',
-              seed: map['seed']?.toString(),
               bandwidthGb: (map['bandwidthGb'] as num?)?.toDouble() ?? 10.0,
               bandwidthUsedGb: (map['bandwidthUsedGb'] as num?)?.toDouble() ?? 0.0,
               expiresAt: DateTime.tryParse(map['expiresAt'] ?? '') ?? DateTime.now().add(const Duration(days: 30)),
@@ -485,7 +479,6 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
       'uuid': currentServer!.uuid,
       'protocol': currentServer!.protocol,
       'transport': currentServer!.transport,
-      'seed': currentServer!.seed,
       'bandwidthGb': currentServer!.bandwidthGb,
       'bandwidthUsedGb': currentServer!.bandwidthUsedGb,
       'expiresAt': currentServer!.expiresAt.toIso8601String(),
@@ -1119,10 +1112,6 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
         'Profil non pris en charge : \${protocol.toUpperCase()} + \${transport.toUpperCase()}.',
       );
     }
-    if (transport == 'mkcp' && (srv.seed == null || srv.seed!.trim().isEmpty)) {
-      throw UnsupportedError('Le profil VMess mKCP/UDP exige le seed fourni par le serveur.');
-    }
-
     final Map<String, dynamic> outboundSettings;
     switch (protocol) {
       case 'vless':
@@ -1224,9 +1213,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
             'downlinkCapacity': 20,
             'congestion': false,
             'readBufferSize': 2,
-            'writeBufferSize': 2,
-            'header': {'type': 'none'},
-            'seed': srv.seed
+            'writeBufferSize': 2
           }
         };
         break;
@@ -1299,7 +1286,6 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
               uuid: srvConf['uuid'] ?? 'abe55237-0237-4237-8237-ab3552370237',
               protocol: (srvConf['protocol'] as String?) ?? 'vless',
               transport: (srvConf['transport'] as String?) ?? 'ws',
-              seed: srvConf['seed']?.toString(),
               bandwidthGb: (data['bandwidthGb'] as num?)?.toDouble() ?? 10.0,
               bandwidthUsedGb: (data['bandwidthUsedGb'] as num?)?.toDouble() ?? 0.0,
               expiresAt: DateTime.tryParse(data['expiresAt'] ?? '') ?? DateTime.now().add(const Duration(days: 30)),
@@ -1430,7 +1416,6 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
             uuid: srvConf['uuid']?.toString() ?? '',
             protocol: srvConf['protocol']?.toString() ?? 'vless',
             transport: srvConf['transport']?.toString() ?? 'ws',
-            seed: srvConf['seed']?.toString(),
             bandwidthGb: (data['bandwidthGb'] as num?)?.toDouble() ?? 0.0,
             bandwidthUsedGb: (data['bandwidthUsedGb'] as num?)?.toDouble() ?? 0.0,
             expiresAt: DateTime.tryParse(data['expiresAt']?.toString() ?? '')
@@ -3032,7 +3017,6 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     _customPathCtrl.dispose();
     _customUuidCtrl.dispose();
     _customSniCtrl.dispose();
-    _customKcpSeedCtrl.dispose();
     _customNameCtrl.dispose();
     _rawLinkInputCtrl.dispose();
     super.dispose();
@@ -3151,7 +3135,6 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
               uuid: map['uuid'] ?? 'abe55237-0237-4237-8237-ab3552370237',
               protocol: map['protocol']?.toString() ?? 'vless',
               transport: map['transport']?.toString() ?? 'ws',
-              seed: map['seed']?.toString(),
               bandwidthGb: (map['bandwidthGb'] as num?)?.toDouble() ?? 10.0,
               bandwidthUsedGb: (map['bandwidthUsedGb'] as num?)?.toDouble() ?? 0.0,
               expiresAt: DateTime.tryParse(map['expiresAt'] ?? '') ?? DateTime.now().add(const Duration(days: 30)),
@@ -3183,7 +3166,6 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
       'uuid': currentServer!.uuid,
       'protocol': currentServer!.protocol,
       'transport': currentServer!.transport,
-      'seed': currentServer!.seed,
       'bandwidthGb': currentServer!.bandwidthGb,
       'bandwidthUsedGb': currentServer!.bandwidthUsedGb,
       'expiresAt': currentServer!.expiresAt.toIso8601String(),
@@ -3893,7 +3875,6 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
               uuid: srvConf['uuid'] ?? 'abe55237-0237-4237-8237-ab3552370237',
               protocol: (srvConf['protocol'] as String?) ?? 'vless',
               transport: (srvConf['transport'] as String?) ?? 'ws',
-              seed: srvConf['seed']?.toString(),
               bandwidthGb: (data['bandwidthGb'] as num?)?.toDouble() ?? 10.0,
               bandwidthUsedGb: (data['bandwidthUsedGb'] as num?)?.toDouble() ?? 0.0,
               expiresAt: DateTime.tryParse(data['expiresAt'] ?? '') ?? DateTime.now().add(const Duration(days: 30)),
@@ -4024,7 +4005,6 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
             uuid: srvConf['uuid']?.toString() ?? '',
             protocol: srvConf['protocol']?.toString() ?? 'vless',
             transport: srvConf['transport']?.toString() ?? 'ws',
-            seed: srvConf['seed']?.toString(),
             bandwidthGb: (data['bandwidthGb'] as num?)?.toDouble() ?? 0.0,
             bandwidthUsedGb: (data['bandwidthUsedGb'] as num?)?.toDouble() ?? 0.0,
             expiresAt: DateTime.tryParse(data['expiresAt']?.toString() ?? '')
