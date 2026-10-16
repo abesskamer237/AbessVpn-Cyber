@@ -566,7 +566,14 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
           }),
         ).timeout(const Duration(seconds: 3));
 
+        if (res.statusCode == 401 || res.statusCode == 403) {
+          _addLog('ACCÈS VPN REFUSÉ PAR LE SERVEUR (HTTP ${res.statusCode})');
+          await _disconnectVpn();
+          _showToast('Votre accès VPN n’est plus autorisé. Vérifiez votre licence ou contactez le support.');
+          return;
+        }
         if (res.statusCode != 200) continue;
+
         final data = jsonDecode(res.body);
         _lastReportedDownloadBytes = _currentDownloadBytes;
         _lastReportedUploadBytes = _currentUploadBytes;
@@ -582,14 +589,20 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
           }
         }
 
-        if (data['isQuotaExceeded'] == true) {
+        if (data['isQuotaExceeded'] == true || data['status'] == 'quota_exceeded') {
           await _disconnectVpn();
           _showQuotaExceededAlert();
           return;
         }
-        if (data['isExpired'] == true) {
+        if (data['isExpired'] == true || data['status'] == 'expired') {
           await _disconnectVpn();
           _showExpiredAlert();
+          return;
+        }
+        if (data['status'] != null && data['status'] != 'active') {
+          _addLog('ACCÈS VPN DÉSACTIVÉ : ${data['status']}');
+          await _disconnectVpn();
+          _showToast('Cette licence VPN est désactivée. Contactez votre revendeur.');
           return;
         }
         return;
