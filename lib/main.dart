@@ -29,6 +29,9 @@ class ImportedVpnServer {
   final String uuid;
   final String protocol;
   final String transport;
+  final bool tls;
+  final String method;
+  final String wsHost;
   final double bandwidthGb;
   double bandwidthUsedGb;
   final DateTime expiresAt;
@@ -45,6 +48,9 @@ class ImportedVpnServer {
     required this.uuid,
     this.protocol = 'vless',
     this.transport = 'ws',
+    this.tls = true,
+    this.method = 'aes-128-gcm',
+    this.wsHost = '',
     this.bandwidthGb = 10.0,
     this.bandwidthUsedGb = 0.0,
     required this.expiresAt,
@@ -232,44 +238,142 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
   void _parseUniversalRawLink(String raw) {
     final link = raw.trim();
     if (link.isEmpty) return;
-    try {
-      if (link.startsWith("vless://")) {
-        final uri = Uri.parse(link.replaceAll("#", "?tag="));
-        final proto = uri.scheme;
-        final host = uri.host;
-        final port = uri.port > 0 ? uri.port : 443;
-        final uuid = uri.userInfo;
-        final path = uri.queryParameters["path"] ?? "/@abess237";
-        final sni = uri.queryParameters["sni"] ?? host;
 
-        final newSrv = ImportedVpnServer(
-          name: uri.queryParameters["tag"] ?? "Serveur Importé ($proto)",
-          address: host.isNotEmpty ? host : "konoyves.shop",
-          port: port,
-          path: path,
-          sni: sni,
-          uuid: uuid.isNotEmpty ? uuid : "abe55237-0237-4237-8237-ab3552370237",
-          protocol: proto,
-          transport: uri.queryParameters["type"] ?? "ws",
-          bandwidthGb: 50.0,
-          bandwidthUsedGb: 0.0,
-          expiresAt: DateTime.now().add(const Duration(days: 30)),
-          token: "RAW-LINK-IMPORT",
-        );
-        setState(() {
-          currentServer = newSrv;
-          _currentNavIndex = 0;
-        });
-        _saveCurrentServer();
-        _showToast("Lien $proto importé avec succès !");
-      } else if (link.startsWith("vmess://") || link.startsWith("trojan://") || link.startsWith("ss://")) {
-        _addLog('IMPORT REFUSÉ : PROTOCOLE NON PRIS EN CHARGE PAR CETTE VERSION');
-        _showToast('Cette version prend en charge VLESS uniquement, avec WebSocket + TLS.');
-      } else {
-        _showToast("Format de lien non reconnu");
+    String decodeB64(String input) {
+      var value = input.replaceAll('-', '+').replaceAll('_', '/');
+      while (value.length % 4 != 0) { value += '='; }
+      return utf8.decode(base64.decode(value));
+    }
+
+    String normalizeNetwork(String network) {
+      switch (network.toLowerCase()) {
+        case 'tcp':
+        case 'raw': return 'raw';
+        case 'ws':
+        case 'grpc':
+        case 'httpupgrade':
+        case 'xhttp': return network.toLowerCase();
+        case 'kcp':
+        case 'mkcp': return 'kcp';
+        case 'splithttp': return 'xhttp';
+        default: throw FormatException('Transport V2Ray non pris en charge : ' + network);
       }
+    }
+
+    void acceptProfile({
+      required String name, required String host, required int port,
+      required String passwordOrUuid, required String protocol,
+      required String transport, required bool tls,
+      String path = '/@abess237', String sni = '',
+      String method = 'aes-128-gcm', String wsHost = '',
+    }) {
+      if (host.isEmpty || port < 1 || port > 65535 || passwordOrUuid.isEmpty) {
+        throw const FormatException('Le lien ne contient pas un hôte, port ou identifiant valide.');
+      }
+      if (protocol == 'trojan' && !tls) {
+        throw const FormatException('Trojan sur un serveur public doit utiliser TLS.');
+      }
+      final server = ImportedVpnServer(
+        name: name.isNotEmpty ? name : 'Serveur importé (' + protocol + ')',
+        address: host, port: port, path: path.isNotEmpty ? path : '/@abess237',
+        sni: sni.isNotEmpty ? sni : host, uuid: passwordOrUuid,
+        protocol: protocol, transport: transport, tls: tls, method: method, wsHost: wsHost,
+        bandwidthGb: 50.0, bandwidthUsedGb: 0.0,
+        expiresAt: DateTime.now().add(const Duration(days: 30)), token: 'RAW-LINK-IMPORT',
+      );
+      setState(() { currentServer = server; _currentNavIndex = 0; });
+      _saveCurrentServer();
+      _showToast('Lien ' + protocol + ' / ' + transport + ' importé.');
+    }
+
+    try {
+      if (link.startsWith('vless://')) {
+        final uri = Uri.parse(link);
+        final q = uri.queryParameters;
+        final security = (q['security'] ?? 'tls').toLowerCase();
+        if (security == 'reality') throw const FormatException('Reality exige les paramètres de clés dédiés et n’est pas converti automatiquement.');
+        acceptProfile(
+          name: uri.fragment.isNotEmpty ? Uri.decodeComponent(uri.fragment) : 'VLESS importé',
+          host: uri.host, port: uri.port > 0 ? uri.port : 443,
+          passwordOrUuid: Uri.decodeComponent(uri.userInfo), protocol: 'vless',
+          transport: normalizeNetwork(q['type'] ?? 'ws'),
+          tls: security != 'none' && security != 'false' && security.isNotEmpty,
+          path: q['path'] ?? '/@abess237', sni: q['sni'] ?? uri.host, wsHost: q['host'] ?? uri.host,
+        );
+        return;
+      }
+
+      if (link.startsWith('vmess://')) {
+        final encoded = link.substring('vmess://'.length).split('#').first;
+        final decoded = jsonDecode(decodeB64(encoded));
+        if (decoded is! Map) throw const FormatException('Profil VMess JSON invalide.');
+        final config = Map<String, dynamic>.from(decoded);
+        final host = (config['add'] ?? config['address'] ?? '').toString();
+        final net = normalizeNetwork((config['net'] ?? 'tcp').toString());
+        final port = int.tryParse((config['port'] ?? '443').toString()) ?? 443;
+        final security = (config['tls'] ?? '').toString().toLowerCase();
+        if (security == 'reality') throw const FormatException('VMess/Reality exige des paramètres supplémentaires.');
+        acceptProfile(
+          name: (config['ps'] ?? 'VMess importé').toString(), host: host, port: port,
+          passwordOrUuid: (config['id'] ?? '').toString(), protocol: 'vmess', transport: net, tls: security == 'tls',
+          path: (config['path'] ?? '/@abess237').toString(),
+          sni: (config['sni'] ?? config['servername'] ?? config['host'] ?? host).toString(),
+          wsHost: (config['host'] ?? host).toString(),
+        );
+        return;
+      }
+
+      if (link.startsWith('trojan://')) {
+        final uri = Uri.parse(link);
+        final q = uri.queryParameters;
+        final security = (q['security'] ?? 'tls').toLowerCase();
+        if (security == 'reality') throw const FormatException('Trojan/Reality n’est pas converti automatiquement.');
+        acceptProfile(
+          name: uri.fragment.isNotEmpty ? Uri.decodeComponent(uri.fragment) : 'Trojan importé',
+          host: uri.host, port: uri.port > 0 ? uri.port : 443,
+          passwordOrUuid: Uri.decodeComponent(uri.userInfo), protocol: 'trojan',
+          transport: normalizeNetwork(q['type'] ?? 'tcp'), tls: security != 'none' && security.isNotEmpty,
+          path: q['path'] ?? '/@abess237', sni: q['sni'] ?? uri.host, wsHost: q['host'] ?? uri.host,
+        );
+        return;
+      }
+
+      if (link.startsWith('ss://')) {
+        final uri = Uri.parse(link);
+        if ((uri.queryParameters['plugin'] ?? '').isNotEmpty) {
+          throw const FormatException('Les liens Shadowsocks avec plugin de transport doivent être convertis séparément.');
+        }
+        String method; String password; String host = uri.host; int port = uri.port;
+        if (host.isNotEmpty && port > 0) {
+          var userInfo = Uri.decodeComponent(uri.userInfo);
+          if (!userInfo.contains(':')) { try { userInfo = decodeB64(userInfo); } catch (_) {} }
+          final split = userInfo.indexOf(':');
+          if (split < 1) throw const FormatException('Identifiants Shadowsocks invalides.');
+          method = userInfo.substring(0, split); password = userInfo.substring(split + 1);
+        } else {
+          final payload = link.substring(5).split('#').first.split('?').first;
+          final decoded = decodeB64(payload);
+          final at = decoded.lastIndexOf('@');
+          if (at < 1) throw const FormatException('Lien Shadowsocks invalide.');
+          final credentials = decoded.substring(0, at);
+          final endpoint = Uri.parse('ss://' + decoded.substring(at + 1));
+          final split = credentials.indexOf(':');
+          if (split < 1 || endpoint.host.isEmpty || endpoint.port < 1) throw const FormatException('Identifiants ou adresse Shadowsocks invalides.');
+          method = credentials.substring(0, split); password = credentials.substring(split + 1);
+          host = endpoint.host; port = endpoint.port;
+        }
+        acceptProfile(
+          name: uri.fragment.isNotEmpty ? Uri.decodeComponent(uri.fragment) : 'Shadowsocks importé',
+          host: host, port: port, passwordOrUuid: password, protocol: 'shadowsocks',
+          transport: 'native', tls: false, method: method,
+        );
+        return;
+      }
+
+      _showToast('Format inconnu. Utilisez vless://, vmess://, trojan:// ou ss://.');
     } catch (e) {
-      _showToast("Erreur analyse lien: $e");
+      _addLog('ÉCHEC IMPORT LIEN : ' + e.toString());
+      _showToast('Lien invalide ou transport non pris en charge.');
     }
   }
 
@@ -455,6 +559,11 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
               token: map['token'],
               encryptedLink: map['encryptedLink'],
               deviceLimit: map['deviceLimit'] ?? 1,
+              protocol: map['protocol']?.toString() ?? 'vless',
+              transport: map['transport']?.toString() ?? 'ws',
+              tls: map['tls'] as bool? ?? true,
+              method: map['method']?.toString() ?? 'aes-128-gcm',
+              wsHost: map['wsHost']?.toString() ?? '',
             );
           });
           _addLog('SERVEUR RESTAURÉ: ${currentServer!.name}');
@@ -484,6 +593,11 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
       'token': currentServer!.token,
       'encryptedLink': currentServer!.encryptedLink,
       'deviceLimit': currentServer!.deviceLimit,
+      'protocol': currentServer!.protocol,
+      'transport': currentServer!.transport,
+      'tls': currentServer!.tls,
+      'method': currentServer!.method,
+      'wsHost': currentServer!.wsHost,
     };
     await prefs.setString('abess_imported_server', jsonEncode(map));
   }
@@ -1111,8 +1225,11 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     if (transport == 'native' && protocol != 'shadowsocks') {
       throw UnsupportedError('Le mode TCP + UDP natif est disponible uniquement avec Shadowsocks.');
     }
-    if ((transport == 'raw' || transport == 'kcp') && protocol != 'vmess') {
-      throw UnsupportedError('RAW/TCP et mKCP/UDP sont réservés à VMess sur ce serveur.');
+    if ((transport == 'raw' || transport == 'kcp') && protocol != 'vmess' && srv.token != 'RAW-LINK-IMPORT') {
+      throw UnsupportedError('RAW/TCP et mKCP/UDP sont réservés à VMess sur le serveur ABESS.');
+    }
+    if (protocol == 'trojan' && !srv.tls) {
+      throw UnsupportedError('Trojan sur un serveur public nécessite TLS.');
     }
 
     final Map<String, dynamic> outboundSettings;
@@ -1161,7 +1278,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
             {
               'address': srv.address,
               'port': srv.port,
-              'method': 'aes-128-gcm',
+              'method': srv.method.isNotEmpty ? srv.method : 'aes-128-gcm',
               'password': srv.uuid
             }
           ]
@@ -1182,7 +1299,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
             'network': 'ws',
             'wsSettings': {
               'path': srv.path,
-              'headers': {'Host': srv.address}
+              'headers': {'Host': srv.wsHost.isNotEmpty ? srv.wsHost : srv.address}
             }
           };
           break;
@@ -1231,11 +1348,10 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
           throw UnsupportedError('Transport non pris en charge.');
       }
 
-      final usesTls = {'ws', 'grpc', 'httpupgrade', 'xhttp'}.contains(transport);
       streamSettings = {
         ...transportSettings,
-        'security': usesTls ? 'tls' : 'none',
-        if (usesTls)
+        'security': srv.tls ? 'tls' : 'none',
+        if (srv.tls)
           'tlsSettings': {
             'allowInsecure': false,
             'serverName': srv.sni.isNotEmpty ? srv.sni : srv.address
@@ -1314,6 +1430,9 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
               uuid: srvConf['uuid'] ?? 'abe55237-0237-4237-8237-ab3552370237',
               protocol: (srvConf['protocol'] as String?) ?? 'vless',
               transport: (srvConf['transport'] as String?) ?? 'ws',
+              tls: (srvConf['security']?.toString().toLowerCase() ?? 'tls') != 'none',
+              method: (srvConf['method'] as String?) ?? 'aes-128-gcm',
+              wsHost: (srvConf['host'] as String?) ?? '',
               bandwidthGb: (data['bandwidthGb'] as num?)?.toDouble() ?? 10.0,
               bandwidthUsedGb: (data['bandwidthUsedGb'] as num?)?.toDouble() ?? 0.0,
               expiresAt: DateTime.tryParse(data['expiresAt'] ?? '') ?? DateTime.now().add(const Duration(days: 30)),
@@ -1444,6 +1563,9 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
             uuid: srvConf['uuid']?.toString() ?? '',
             protocol: srvConf['protocol']?.toString() ?? 'vless',
             transport: srvConf['transport']?.toString() ?? 'ws',
+            tls: (srvConf['security']?.toString().toLowerCase() ?? 'tls') != 'none',
+            method: srvConf['method']?.toString() ?? 'aes-128-gcm',
+            wsHost: srvConf['host']?.toString() ?? '',
             bandwidthGb: (data['bandwidthGb'] as num?)?.toDouble() ?? 0.0,
             bandwidthUsedGb: (data['bandwidthUsedGb'] as num?)?.toDouble() ?? 0.0,
             expiresAt: DateTime.tryParse(data['expiresAt']?.toString() ?? '')
