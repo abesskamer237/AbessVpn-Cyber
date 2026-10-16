@@ -1225,6 +1225,15 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     if (streamSettings != null) {
       proxyOutbound['streamSettings'] = streamSettings;
     }
+    if (_isMuxEnabled) {
+      // XUDP carries UDP datagrams over the proxy connection when supported.
+      proxyOutbound['mux'] = {
+        'enabled': true,
+        'concurrency': 8,
+        'xudpConcurrency': 8,
+        'xudpProxyUDP443': 'allow'
+      };
+    }
 
     return {
       'log': {'loglevel': 'warning'},
