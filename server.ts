@@ -87,24 +87,32 @@ export interface MasterServerConfig {
 
 // Master Configuration Helper
 function loadMasterConfig(): MasterServerConfig {
+  const vpnDomain = (process.env.VPN_DOMAIN || '').trim().toLowerCase();
   const defaults: MasterServerConfig = {
-    serverHost: 'abess-ops-hub-d-ploiement-docker.ai.studio',
+    serverHost: vpnDomain,
     serverPort: 443,
     protocol: 'vless',
     transport: 'ws',
     path: '/@abess237',
-    sniHost: 'crashlyticsreports-pa.googleapis.com',
-    uuid: 'abe55237-0237-4237-8237-ab3552370237',
-    secretPassphrase: 'AbessVpn-Master-SecretKey-2026',
+    sniHost: vpnDomain,
+    uuid: crypto.randomUUID(),
+    secretPassphrase: process.env.MASTER_SECRET || '',
     systemName: 'AbessVpn Master Server',
-    contactTelegram: '@abess237'
+    contactTelegram: process.env.CONTACT_TELEGRAM || '@abess237'
   };
 
   if (fs.existsSync(configFile)) {
     try {
-      return { ...defaults, ...JSON.parse(fs.readFileSync(configFile, 'utf8')) };
+      const stored = JSON.parse(fs.readFileSync(configFile, 'utf8')) as Partial<MasterServerConfig>;
+      return {
+        ...defaults,
+        ...stored,
+        serverHost: typeof stored.serverHost === 'string' ? stored.serverHost.trim() : defaults.serverHost,
+        sniHost: typeof stored.sniHost === 'string' ? stored.sniHost.trim() : (typeof stored.serverHost === 'string' ? stored.serverHost.trim() : defaults.sniHost),
+        secretPassphrase: process.env.MASTER_SECRET || (typeof stored.secretPassphrase === 'string' ? stored.secretPassphrase : '')
+      };
     } catch {
-      // fallback
+      // Recreate with environment defaults below.
     }
   }
 
@@ -708,7 +716,7 @@ async function startServer() {
       const now = new Date();
       const expiresAt = new Date(now.getTime() + durationDays * 24 * 3600 * 1000).toISOString();
       const masterConfig = loadMasterConfig();
-      const host = masterConfig.serverHost || req.get('host') || 'abess-ops-hub-d-ploiement-docker.ai.studio';
+      const host = masterConfig.serverHost;
 
       const payload = {
         token: tokenCode,
@@ -878,7 +886,7 @@ async function startServer() {
     const trialTokenCode = `ABESS-FREE-1GB-${Math.floor(1000 + Math.random() * 9000)}`;
     const expiresAt = new Date(now.getTime() + 24 * 3600 * 1000).toISOString();
     const masterConfig = loadMasterConfig();
-    const host = masterConfig.serverHost || req.get('host') || 'abess-ops-hub-d-ploiement-docker.ai.studio';
+    const host = masterConfig.serverHost;
 
     const payload = {
       token: trialTokenCode,
@@ -1023,7 +1031,7 @@ async function startServer() {
       saveTokens(tokens);
 
       const masterConfig = loadMasterConfig();
-      const host = masterConfig.serverHost || req.get('host') || 'abess-ops-hub-d-ploiement-docker.ai.studio';
+      const host = masterConfig.serverHost;
       const msRemaining = Math.max(0, expiryTime - now);
       const daysRemaining = Math.ceil(msRemaining / (1000 * 3600 * 24));
 
