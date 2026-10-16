@@ -21,6 +21,7 @@ void main() {
 
 /// Modèle pour le serveur importé exclusivement par Token ou Fichier crypté
 class ImportedVpnServer {
+  final String id;
   final String name;
   final String address;
   final int port;
@@ -40,6 +41,7 @@ class ImportedVpnServer {
   final int deviceLimit;
 
   ImportedVpnServer({
+    String? id,
     required this.name,
     required this.address,
     required this.port,
@@ -57,7 +59,7 @@ class ImportedVpnServer {
     this.token,
     this.encryptedLink,
     this.deviceLimit = 1,
-  });
+  }) : id = id ?? '${DateTime.now().microsecondsSinceEpoch}-${math.Random().nextInt(0x7fffffff)}';
 
   bool get isExpired => DateTime.now().isAfter(expiresAt);
   bool get isQuotaExceeded => bandwidthUsedGb >= bandwidthGb;
@@ -163,7 +165,10 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
   final String _virtualIp = '10.8.0.2';
   String _deviceId = '';
 
-  // Profil Actif (Exclusivement importé)
+  // Profils conservés localement ; currentServer est le profil sélectionné.
+  static const String _savedProfilesKey = 'abess_imported_servers';
+  static const String _selectedProfileKey = 'abess_selected_server_id';
+  List<ImportedVpnServer> savedServers = <ImportedVpnServer>[];
   ImportedVpnServer? currentServer;
 
   // Contrôleurs d'importation et de création
@@ -183,6 +188,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
   // MODE MULTI-PROTOCOLES AUTONOME (SANS TOKEN)
   String _customProtocol = "vless";
   String _customTransport = "ws";
+  bool _customTlsEnabled = true;
   final TextEditingController _customHostCtrl = TextEditingController();
   final TextEditingController _customWsHostCtrl = TextEditingController();
   final TextEditingController _customPortCtrl = TextEditingController(text: "443");
@@ -224,7 +230,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
       uuid: uuid,
       protocol: _customProtocol,
       transport: _customTransport,
-      tls: !{'native', 'raw', 'tcp', 'kcp', 'mkcp'}.contains(_customTransport),
+      tls: _customTlsEnabled && !{'native', 'kcp', 'mkcp'}.contains(_customTransport),
       wsHost: _customWsHostCtrl.text.trim(),
       bandwidthGb: 999.0,
       bandwidthUsedGb: 0.0,
@@ -232,11 +238,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
       token: "CUSTOM-ZERO-TOKEN",
     );
 
-    setState(() {
-      currentServer = customSrv;
-      _currentNavIndex = 0; // Basculer sur l'onglet de connexion
-    });
-    _saveCurrentServer();
+    unawaited(_storeAndSelectServer(customSrv));
     _addLog("SERVEUR MULTI-PROTOCOLE ACTIF ($_customProtocol/$_customTransport)");
     _showToast("Serveur $_customProtocol configuré avec succès ! Prêt pour connexion.");
   }
@@ -287,8 +289,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
         bandwidthGb: 50.0, bandwidthUsedGb: 0.0,
         expiresAt: DateTime.now().add(const Duration(days: 30)), token: 'RAW-LINK-IMPORT',
       );
-      setState(() { currentServer = server; _currentNavIndex = 0; });
-      _saveCurrentServer();
+      unawaited(_storeAndSelectServer(server));
       _showToast('Lien ' + protocol + ' / ' + transport + ' importé.');
     }
 
@@ -534,7 +535,76 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     }
   }
 
-  // Chargement du serveur sauvegardé
+  Map<String, dynamic> _serverToJsonMap(ImportedVpnServer server) => {
+    'id': server.id,
+    'name': server.name,
+    'address': server.address,
+    'port': server.port,
+    'path': server.path,
+    'sni': server.sni,
+    'uuid': server.uuid,
+    'bandwidthGb': server.bandwidthGb,
+    'bandwidthUsedGb': server.bandwidthUsedGb,
+    'expiresAt': server.expiresAt.toIso8601String(),
+    'token': server.token,
+    'encryptedLink': server.encryptedLink,
+    'deviceLimit': server.deviceLimit,
+    'protocol': server.protocol,
+    'transport': server.transport,
+    'tls': server.tls,
+    'method': server.method,
+    'wsHost': server.wsHost,
+  };
+
+  ImportedVpnServer _serverFromJsonMap(Map<String, dynamic> map) => ImportedVpnServer(
+    id: map['id']?.toString(),
+    name: map['name']?.toString() ?? 'ABESS VPN importé',
+    address: map['address']?.toString() ?? '',
+    port: (map['port'] as num?)?.toInt() ?? 443,
+    path: map['path']?.toString() ?? '/@abess237',
+    sni: map['sni']?.toString() ?? map['address']?.toString() ?? '',
+    uuid: map['uuid']?.toString() ?? '',
+    bandwidthGb: (map['bandwidthGb'] as num?)?.toDouble() ?? 10.0,
+    bandwidthUsedGb: (map['bandwidthUsedGb'] as num?)?.toDouble() ?? 0.0,
+    expiresAt: DateTime.tryParse(map['expiresAt']?.toString() ?? '')
+        ?? DateTime.now().add(const Duration(days: 30)),
+    token: map['token']?.toString(),
+    encryptedLink: map['encryptedLink']?.toString(),
+    deviceLimit: (map['deviceLimit'] as num?)?.toInt() ?? 1,
+    protocol: map['protocol']?.toString() ?? 'vless',
+    transport: map['transport']?.toString() ?? 'ws',
+    tls: map['tls'] as bool? ?? true,
+    method: map['method']?.toString() ?? 'aes-128-gcm',
+    wsHost: map['wsHost']?.toString() ?? '',
+  );
+
+  String _profileIdentityKey(ImportedVpnServer server) {
+    final token = server.token?.trim();
+    if (token != null && token.isNotEmpty &&
+        token != 'CUSTOM-ZERO-TOKEN' && token != 'RAW-LINK-IMPORT') {
+      return 'token:${token.toUpperCase()}';
+    }
+    final link = server.encryptedLink?.trim();
+    if (link != null && link.isNotEmpty) return 'link:$link';
+    return 'manual:${server.protocol.toLowerCase()}|${server.transport.toLowerCase()}|${server.address.toLowerCase()}|${server.port}|${server.uuid}|${server.path}|${server.sni}|${server.wsHost}';
+  }
+
+  Future<void> _persistProfileState() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _savedProfilesKey,
+      jsonEncode(savedServers.map(_serverToJsonMap).toList()),
+    );
+    if (currentServer == null) {
+      await prefs.remove(_selectedProfileKey);
+      await prefs.remove('abess_imported_server');
+    } else {
+      await prefs.setString(_selectedProfileKey, currentServer!.id);
+      // Keep the legacy key in sync so older builds can still recover the active profile.
+      await prefs.setString('abess_imported_server', jsonEncode(_serverToJsonMap(currentServer!)));
+    }
+  }
+
   Future<void> _loadSavedServer() async {
     final prefs = await SharedPreferences.getInstance();
     if (!mounted) return;
@@ -542,66 +612,226 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
       isKillSwitchEnabled = prefs.getBool('abess_kill_switch') ?? true;
       isAutoReconnectEnabled = prefs.getBool('abess_auto_reconnect') ?? true;
     });
-    final savedData = prefs.getString('abess_imported_server');
-    if (savedData != null) {
-      try {
-        final Map<String, dynamic> map = jsonDecode(savedData);
-        if (mounted) {
-          setState(() {
-            currentServer = ImportedVpnServer(
-              name: map['name'] ?? 'ABESS VIP IMPORTÉ',
-              address: map['address']?.toString() ?? '',
-              port: map['port'] ?? 443,
-              path: map['path'] ?? '/@abess237',
-              sni: map['sni']?.toString() ?? (map['address']?.toString() ?? ''),
-              uuid: map['uuid']?.toString() ?? '',
-              bandwidthGb: (map['bandwidthGb'] as num?)?.toDouble() ?? 10.0,
-              bandwidthUsedGb: (map['bandwidthUsedGb'] as num?)?.toDouble() ?? 0.0,
-              expiresAt: DateTime.tryParse(map['expiresAt'] ?? '') ?? DateTime.now().add(const Duration(days: 30)),
-              token: map['token'],
-              encryptedLink: map['encryptedLink'],
-              deviceLimit: map['deviceLimit'] ?? 1,
-              protocol: map['protocol']?.toString() ?? 'vless',
-              transport: map['transport']?.toString() ?? 'ws',
-              tls: map['tls'] as bool? ?? true,
-              method: map['method']?.toString() ?? 'aes-128-gcm',
-              wsHost: map['wsHost']?.toString() ?? '',
-            );
-          });
-          _addLog('SERVEUR RESTAURÉ: ${currentServer!.name}');
+
+    final loaded = <ImportedVpnServer>[];
+    final storedList = prefs.getString(_savedProfilesKey);
+    try {
+      if (storedList != null) {
+        final decoded = jsonDecode(storedList);
+        if (decoded is List) {
+          for (final item in decoded) {
+            if (item is Map) {
+              final server = _serverFromJsonMap(Map<String, dynamic>.from(item));
+              if (server.address.isNotEmpty && server.uuid.isNotEmpty) loaded.add(server);
+            }
+          }
         }
-      } catch (_) {}
+      } else {
+        // One-time migration from the previous single-profile storage key.
+        final legacy = prefs.getString('abess_imported_server');
+        if (legacy != null) {
+          final decoded = jsonDecode(legacy);
+          if (decoded is Map) {
+            final server = _serverFromJsonMap(Map<String, dynamic>.from(decoded));
+            if (server.address.isNotEmpty && server.uuid.isNotEmpty) loaded.add(server);
+          }
+        }
+      }
+    } catch (error) {
+      _addLog('PROFILS SAUVEGARDÉS ILLISIBLES : $error');
+    }
+
+    final wantedId = prefs.getString(_selectedProfileKey);
+    ImportedVpnServer? selected;
+    for (final server in loaded) {
+      if (server.id == wantedId) {
+        selected = server;
+        break;
+      }
+    }
+    selected ??= loaded.isNotEmpty ? loaded.first : null;
+    if (!mounted) return;
+    setState(() {
+      savedServers = loaded;
+      currentServer = selected;
+    });
+    if (storedList == null && loaded.isNotEmpty) await _persistProfileState();
+    if (selected == null) {
+      _addLog('AUCUN SERVEUR ACTIF : IMPORTez un token ou un lien de configuration');
     } else {
-      _addLog('AUCUN SERVEUR ACTIF: VEUILLEZ IMPORTER UN ACCÈS');
+      _addLog('PROFIL RESTAURÉ : ${selected.name} (${loaded.length} profil(s) enregistré(s))');
+    }
+  }
+
+  Future<void> _storeAndSelectServer(ImportedVpnServer server, {bool switchToConnection = true}) async {
+    final identity = _profileIdentityKey(server);
+    final existingIndex = savedServers.indexWhere((item) =>
+        item.id == server.id || _profileIdentityKey(item) == identity);
+    final storedServer = existingIndex >= 0
+        ? _serverFromJsonMap({..._serverToJsonMap(server), 'id': savedServers[existingIndex].id})
+        : server;
+    final next = List<ImportedVpnServer>.from(savedServers);
+    if (existingIndex >= 0) {
+      next[existingIndex] = storedServer;
+    } else {
+      next.add(storedServer);
+    }
+
+    // Keep an active tunnel tied to the profile it actually uses. The new profile
+    // is saved immediately, but selection is deferred until the user disconnects.
+    final keepCurrentTunnel = isConnected && currentServer != null &&
+        _profileIdentityKey(currentServer!) != identity;
+    setState(() {
+      savedServers = next;
+      if (!keepCurrentTunnel) {
+        currentServer = storedServer;
+        if (switchToConnection) _currentNavIndex = 0;
+      }
+    });
+    await _persistProfileState();
+    if (keepCurrentTunnel) {
+      _showToast('Configuration ajoutée. Déconnectez le VPN pour la sélectionner.');
     }
   }
 
   Future<void> _saveCurrentServer() async {
-    final prefs = await SharedPreferences.getInstance();
     if (currentServer == null) {
-      await prefs.remove('abess_imported_server');
+      await _persistProfileState();
       return;
     }
-    final map = {
-      'name': currentServer!.name,
-      'address': currentServer!.address,
-      'port': currentServer!.port,
-      'path': currentServer!.path,
-      'sni': currentServer!.sni,
-      'uuid': currentServer!.uuid,
-      'bandwidthGb': currentServer!.bandwidthGb,
-      'bandwidthUsedGb': currentServer!.bandwidthUsedGb,
-      'expiresAt': currentServer!.expiresAt.toIso8601String(),
-      'token': currentServer!.token,
-      'encryptedLink': currentServer!.encryptedLink,
-      'deviceLimit': currentServer!.deviceLimit,
-      'protocol': currentServer!.protocol,
-      'transport': currentServer!.transport,
-      'tls': currentServer!.tls,
-      'method': currentServer!.method,
-      'wsHost': currentServer!.wsHost,
-    };
-    await prefs.setString('abess_imported_server', jsonEncode(map));
+    final index = savedServers.indexWhere((item) => item.id == currentServer!.id);
+    if (index >= 0) {
+      savedServers[index] = currentServer!;
+    } else {
+      savedServers.add(currentServer!);
+    }
+    await _persistProfileState();
+  }
+
+  Future<void> _selectSavedServer(ImportedVpnServer server) async {
+    if (isConnected && currentServer?.id != server.id) {
+      _showToast('Déconnectez le VPN avant de changer de configuration.');
+      return;
+    }
+    setState(() {
+      currentServer = savedServers.firstWhere(
+        (item) => item.id == server.id,
+        orElse: () => server,
+      );
+      _currentNavIndex = 0;
+      _lastReportedDownloadBytes = _currentDownloadBytes;
+      _lastReportedUploadBytes = _currentUploadBytes;
+    });
+    await _persistProfileState();
+    _showToast('Configuration sélectionnée : ${server.name}');
+  }
+
+  Future<void> _deleteSavedServer(ImportedVpnServer server) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: cyberCardBg,
+        title: const Text('Supprimer la configuration ?', style: TextStyle(color: Colors.white, fontSize: 15)),
+        content: Text('« ${server.name} » sera supprimée de cet appareil.', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('ANNULER')),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('SUPPRIMER', style: TextStyle(color: cyberRed, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final wasSelected = currentServer?.id == server.id;
+    if (wasSelected && isConnected) await _disconnectVpn();
+    final next = savedServers.where((item) => item.id != server.id).toList();
+    setState(() {
+      savedServers = next;
+      if (wasSelected) currentServer = next.isNotEmpty ? next.first : null;
+    });
+    await _persistProfileState();
+    _showToast('Configuration supprimée de cet appareil.');
+  }
+
+  Widget _buildSavedProfilesSection() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: cyberCardBg,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: cyberCyan.withOpacity(0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.dns_outlined, color: cyberCyan, size: 18),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text('MES CONFIGURATIONS', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 1)),
+              ),
+              Text('${savedServers.length}', style: const TextStyle(color: cyberCyan, fontSize: 12, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (savedServers.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: Text('Aucune configuration enregistrée. Ajoutez un token ou importez un lien ci-dessous.', style: TextStyle(color: Colors.white54, fontSize: 10)),
+            )
+          else
+            ...savedServers.map((profile) {
+              final selected = currentServer?.id == profile.id;
+              return Container(
+                margin: const EdgeInsets.only(top: 6),
+                decoration: BoxDecoration(
+                  color: selected ? cyberGreen.withOpacity(0.10) : const Color(0xFF030712),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: selected ? cyberGreen : Colors.white12),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(10),
+                        onTap: () => unawaited(_selectSavedServer(profile)),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                          child: Row(
+                            children: [
+                              Icon(selected ? Icons.radio_button_checked : Icons.radio_button_off, color: selected ? cyberGreen : Colors.white38, size: 18),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(profile.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: selected ? cyberGreen : Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+                                    const SizedBox(height: 3),
+                                    Text('${profile.protocol.toUpperCase()} · ${profile.transport.toUpperCase()} · ${profile.tls ? "TLS" : "sans TLS"} · ${profile.address}:${profile.port}', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white54, fontSize: 9)),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Supprimer cette configuration',
+                      onPressed: () => unawaited(_deleteSavedServer(profile)),
+                      icon: const Icon(Icons.delete_outline, color: cyberRed, size: 19),
+                    ),
+                  ],
+                ),
+              );
+            }),
+        ],
+      ),
+    );
   }
 
   // Mesure la latence réelle : tunnel actif d'abord, puis API de contrôle.
@@ -663,14 +893,20 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
         }
       });
 
-      if (_connectionDurationSeconds % 10 == 0 && currentServer?.token != null) {
+      if (_connectionDurationSeconds % 10 == 0 && _isManagedLicense(currentServer)) {
         _syncUsageWithServer();
       }
     });
   }
 
+  bool _isManagedLicense(ImportedVpnServer? server) {
+    final token = server?.token?.trim();
+    return token != null && token.isNotEmpty &&
+        token != 'CUSTOM-ZERO-TOKEN' && token != 'RAW-LINK-IMPORT';
+  }
+
   Future<void> _syncUsageWithServer() async {
-    if (currentServer?.token == null) return;
+    if (!_isManagedLicense(currentServer)) return;
     final downloadDelta = math.max(0, _currentDownloadBytes - _lastReportedDownloadBytes);
     final uploadDelta = math.max(0, _currentUploadBytes - _lastReportedUploadBytes);
 
@@ -689,9 +925,14 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
         ).timeout(const Duration(seconds: 3));
 
         if (res.statusCode == 401 || res.statusCode == 403) {
-          _addLog('ACCÈS VPN REFUSÉ PAR LE SERVEUR (HTTP ${res.statusCode})');
+          String serverReason = 'Le serveur a refusé cette licence VPN.';
+          try {
+            final body = jsonDecode(res.body);
+            if (body is Map && body['error'] is String) serverReason = body['error'] as String;
+          } catch (_) {}
+          _addLog('LICENCE REFUSÉE PAR LE SERVEUR (HTTP ${res.statusCode}) : $serverReason');
           await _disconnectVpn();
-          _showToast('Votre accès VPN n’est plus autorisé. Vérifiez votre licence ou contactez le support.');
+          _showToast(serverReason);
           return;
         }
         if (res.statusCode != 200) continue;
@@ -1459,10 +1700,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
               token: cleanToken,
               deviceLimit: data['deviceLimit'] ?? 1,
             );
-            if (mounted) {
-              setState(() => currentServer = newServer);
-            }
-            _saveCurrentServer();
+            await _storeAndSelectServer(newServer);
             _addLog('SERVEUR MAÎTRE VALIDÉ (${newServer.bandwidthGb} Go • Expiration: ${_formatRemaining(newServer.expiresAt)})');
             return;
           }
@@ -1519,10 +1757,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
             encryptedLink: data['encryptedLink'],
             deviceLimit: 1,
           );
-          if (mounted) {
-            setState(() => currentServer = newServer);
-          }
-          _saveCurrentServer();
+          await _storeAndSelectServer(newServer);
           _addLog('ESSAI 1 GO ACTIVÉ AVEC SUCCÈS');
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -1601,11 +1836,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
             return;
           }
 
-          if (mounted) setState(() {
-            currentServer = newServer;
-            _currentNavIndex = 0;
-          });
-          await _saveCurrentServer();
+          await _storeAndSelectServer(newServer);
           _addLog('LIEN ABESS VALIDÉ • ${newServer.bandwidthGb} Go • ${_formatRemaining(newServer.expiresAt)}');
           _showToast('Licence validée et configuration importée.');
           return;
@@ -1761,10 +1992,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                         encryptedLink: data['encryptedLink'],
                         deviceLimit: _createDeviceLimit,
                       );
-                      if (mounted) {
-                        setState(() => currentServer = newServer);
-                      }
-                      _saveCurrentServer();
+                      unawaited(_storeAndSelectServer(newServer));
                       _addLog('SERVEUR ACTIVÉ DIRECTEMENT DANS L\'APP');
                     },
                     style: ElevatedButton.styleFrom(backgroundColor: cyberGreen),
@@ -2232,7 +2460,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                           style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
                         ),
                         Text(
-                          "${srv.protocol.toUpperCase()} • ${srv.transport.toUpperCase()} • TLS 1.3 CHIFFRÉ",
+                          "${srv.protocol.toUpperCase()} • ${srv.transport.toUpperCase()} • ${srv.tls ? "TLS activé" : "TLS non utilisé"}",
                           style: const TextStyle(color: cyberGreen, fontSize: 10, fontWeight: FontWeight.bold),
                         ),
                       ],
@@ -2612,6 +2840,8 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          _buildSavedProfilesSection(),
+          const SizedBox(height: 16),
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(16),
@@ -2834,6 +3064,32 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                       const SizedBox(height: 10),
                       _buildFormField("SNI TLS (domaine du certificat)", _customSniCtrl, "vpn.ton-domaine.com"),
                     ],
+                  ),
+                ),
+                const SizedBox(height: 10),
+
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: _customTlsEnabled && !{'native', 'kcp', 'mkcp'}.contains(_customTransport),
+                  onChanged: (enabled) {
+                    if (_customProtocol == 'trojan' && !enabled) {
+                      _showToast('Trojan nécessite TLS sur un serveur public.');
+                      return;
+                    }
+                    if (!enabled && _customProtocol == 'trojan') return;
+                    if ({'native', 'kcp', 'mkcp'}.contains(_customTransport) && enabled) {
+                      _showToast('Ce transport direct ne prend pas en charge TLS dans ce profil.');
+                      return;
+                    }
+                    setState(() => _customTlsEnabled = enabled);
+                  },
+                  activeTrackColor: cyberGreen,
+                  title: const Text('Sécurité TLS', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                  subtitle: Text(
+                    _customTlsEnabled && !{'native', 'kcp', 'mkcp'}.contains(_customTransport)
+                        ? 'TLS activé : le serveur distant doit présenter un certificat valide et accepter ce SNI.'
+                        : 'TLS désactivé pour ce mode de transport.',
+                    style: const TextStyle(color: Colors.white54, fontSize: 10),
                   ),
                 ),
                 const SizedBox(height: 10),
@@ -3152,7 +3408,11 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
           if (id == 'shadowsocks') {
             _customTransport = 'native';
             _customPortCtrl.text = '10050';
+            _customTlsEnabled = false;
           } else {
+            if (id == 'trojan' || oldTransport == 'native' || oldTransport == 'kcp' || oldTransport == 'mkcp') {
+              _customTlsEnabled = true;
+            }
             final incompatibleNative = oldTransport == 'native';
             final incompatibleDirect = id != 'vmess' && (oldTransport == 'raw' || oldTransport == 'kcp');
             if (incompatibleNative || incompatibleDirect) {
@@ -3207,6 +3467,10 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
             final oldTransport = _customTransport;
             if (id == 'native') {
               _customPortCtrl.text = '10050';
+              _customTlsEnabled = false;
+            } else if (id == 'kcp') {
+              _customPortCtrl.text = '10061';
+              _customTlsEnabled = false;
             } else if (id == 'raw') {
               _customPortCtrl.text = '10060';
             } else if (id == 'kcp') {
@@ -3214,6 +3478,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
             } else if (oldTransport == 'native' || oldTransport == 'raw' || oldTransport == 'kcp') {
               _customPortCtrl.text = '443';
             }
+            if (['ws', 'grpc', 'httpupgrade', 'xhttp'].contains(id)) _customTlsEnabled = true;
             _customTransport = id;
           });
         },
