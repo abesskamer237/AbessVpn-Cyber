@@ -1225,7 +1225,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     if (streamSettings != null) {
       proxyOutbound['streamSettings'] = streamSettings;
     }
-    if (_isMuxEnabled) {
+    if (_isMuxEnabled && transport != 'native') {
       // XUDP carries UDP datagrams over the proxy connection when supported.
       proxyOutbound['mux'] = {
         'enabled': true,
@@ -2916,10 +2916,11 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     return Expanded(
       child: GestureDetector(
         onTap: () => setState(() {
-          _customProtocol = id;
           if (id != 'shadowsocks' && _customTransport == 'native') {
             _customTransport = 'ws';
+            if (_customPortCtrl.text.trim() == '10050') _customPortCtrl.text = '443';
           }
+          _customProtocol = id;
         }),
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 8),
@@ -2947,7 +2948,14 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     final isSelected = _customTransport == id;
     return Expanded(
       child: GestureDetector(
-        onTap: () => setState(() => _customTransport = id),
+        onTap: () => setState(() {
+          if (id == 'native' && _customProtocol == 'shadowsocks' && _customPortCtrl.text.trim() == '443') {
+            _customPortCtrl.text = '10050';
+          } else if (_customTransport == 'native' && _customPortCtrl.text.trim() == '10050' && id != 'native') {
+            _customPortCtrl.text = '443';
+          }
+          _customTransport = id;
+        }),
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 8),
           decoration: BoxDecoration(
