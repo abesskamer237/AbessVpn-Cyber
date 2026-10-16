@@ -239,6 +239,18 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
         final host = uri.host;
         final port = uri.port > 0 ? uri.port : 443;
         final uuid = uri.userInfo;
+        final rawTransport = (uri.queryParameters["type"] ?? "ws").toLowerCase();
+        final transport = switch (rawTransport) {
+          "tcp" || "raw" => "raw",
+          "kcp" || "mkcp" => "mkcp",
+          "splithttp" => "xhttp",
+          "websocket" => "ws",
+          _ => rawTransport,
+        };
+        if (!_transportOptionsFor(proto).contains(transport)) {
+          _showToast("Transport VLESS non pris en charge par ce serveur : $rawTransport");
+          return;
+        }
         final path = uri.queryParameters["path"] ?? "/@abess237";
         final sni = uri.queryParameters["sni"] ?? host;
 
@@ -250,7 +262,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
           sni: sni,
           uuid: uuid.isNotEmpty ? uuid : "abe55237-0237-4237-8237-ab3552370237",
           protocol: proto,
-          transport: uri.queryParameters["type"] ?? "ws",
+          transport: transport,
           bandwidthGb: 50.0,
           bandwidthUsedGb: 0.0,
           expiresAt: DateTime.now().add(const Duration(days: 30)),
@@ -263,8 +275,8 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
         _saveCurrentServer();
         _showToast("Lien $proto importé avec succès !");
       } else if (link.startsWith("vmess://") || link.startsWith("trojan://") || link.startsWith("ss://")) {
-        _addLog('IMPORT REFUSÉ : PROTOCOLE NON PRIS EN CHARGE PAR CETTE VERSION');
-        _showToast('Cette version prend en charge VLESS uniquement, avec WebSocket + TLS.');
+        _addLog('LIEN EXTERNE NON PRIS EN CHARGE : UTILISEZ UN TOKEN ABESS OU LE FORMULAIRE MULTI-PROTOCOLE');
+        _showToast('Pour VMess/Trojan/Shadowsocks, importez un token ABESS ou configurez le profil manuellement.');
       } else {
         _showToast("Format de lien non reconnu");
       }
@@ -2543,7 +2555,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                   ],
                 ),
                 const SizedBox(height: 4),
-                const Text("En cas d'absence de token, configurez directement vos paramètres de connexion pour n'importe quel protocole et transport.", style: TextStyle(color: Colors.white60, fontSize: 10)),
+                const Text("Sans token, configurez un profil parmi VLESS, VMess, Trojan et Shadowsocks, avec un transport compatible.", style: TextStyle(color: Colors.white60, fontSize: 10)),
                 const SizedBox(height: 14),
 
                 const Text("PROTOCOLE RÉSEAU", style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold)),
@@ -5174,7 +5186,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                   ],
                 ),
                 const SizedBox(height: 4),
-                const Text("En cas d'absence de token, configurez directement vos paramètres de connexion pour n'importe quel protocole et transport.", style: TextStyle(color: Colors.white60, fontSize: 10)),
+                const Text("Sans token, configurez un profil parmi VLESS, VMess, Trojan et Shadowsocks, avec un transport compatible.", style: TextStyle(color: Colors.white60, fontSize: 10)),
                 const SizedBox(height: 14),
 
                 const Text("PROTOCOLE RÉSEAU", style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold)),
