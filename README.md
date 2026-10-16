@@ -19,7 +19,7 @@ Une solution VPN comprenant :
                             v
 +--------------------------------------------------------+
 |           Dépôt AbessVpn-Server-Panel                   |
-|  - API + React Admin + PostgreSQL?                     |
+|  - API + React Admin + stockage persistant Docker      |
 |  - Xray-core + Caddy + Docker Compose                  |
 |  - Expiration, quota, appareils et compteurs réels     |
 +--------------------------------------------------------+
