@@ -1,0 +1,49 @@
+name: Verify ABESS legacy API and source host hygiene
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - "server.ts"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/verify-legacy-api.yml"
+      - "lib/main.dart"
+  pull_request:
+    branches: [ main ]
+    paths:
+      - "server.ts"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/verify-legacy-api.yml"
+      - "lib/main.dart"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install Node API dependencies
+        run: npm ci
+
+      - name: Type-check the Node API
+        run: npx tsc --noEmit --target ES2022 --module NodeNext --moduleResolution NodeNext --esModuleInterop --skipLibCheck server.ts
+
+      - name: Reject legacy demo hostnames and SNI values
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -nEi 'run[.]app|ai[.]studio|crashlyticsreports-pa[.]googleapis[.]com|konoyves[.]shop|abess-ops-hub-d-ploiement-docker' server.ts lib/main.dart; then
+            echo "Remove obsolete host/SNI defaults; configure the real endpoint in the admin panel." >&2
+            exit 1
+          fi
