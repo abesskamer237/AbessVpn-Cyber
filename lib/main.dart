@@ -2785,16 +2785,56 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                 ),
                 const SizedBox(height: 10),
 
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildFormField("Host HTTP / WebSocket (en-tête Host)", _customWsHostCtrl, "host.exemple.com"),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _buildFormField("SNI TLS (domaine du certificat)", _customSniCtrl, "vpn.ton-domaine.com"),
-                    ),
-                  ],
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: cyberCyan.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: cyberCyan.withOpacity(0.55)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        "HOST HTTP — EN-TÊTE DU TRANSPORT",
+                        style: TextStyle(color: cyberCyan, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.7),
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        "Champ distinct de l’adresse IP/domaine du serveur et du SNI TLS. Utilisé pour Host ou :authority avec WS, gRPC, HTTPUpgrade et XHTTP. Laisser vide pour reprendre l’adresse du serveur.",
+                        style: TextStyle(color: Colors.white60, fontSize: 10, height: 1.35),
+                      ),
+                      const SizedBox(height: 10),
+                      _buildFormField("Host HTTP / WebSocket (facultatif)", _customWsHostCtrl, "host.exemple.com"),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: cyberYellow.withOpacity(0.06),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: cyberYellow.withOpacity(0.45)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        "SNI TLS — NOM PRÉSENTÉ AU CERTIFICAT",
+                        style: TextStyle(color: cyberYellow, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.7),
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        "Le SNI est encore un autre paramètre : il ne change ni l’adresse de destination ni le Host HTTP. Pour une connexion TLS, renseigner un nom accepté par le serveur et son certificat.",
+                        style: TextStyle(color: Colors.white60, fontSize: 10, height: 1.35),
+                      ),
+                      const SizedBox(height: 10),
+                      _buildFormField("SNI TLS (domaine du certificat)", _customSniCtrl, "vpn.ton-domaine.com"),
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 10),
 
