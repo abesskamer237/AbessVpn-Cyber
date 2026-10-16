@@ -2563,17 +2563,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
 
                 const Text("TRANSPORT STREAM", style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 6),
-                Row(
-                  children: [
-                    _buildTransportChip("ws", "WebSocket (ws)"),
-                    const SizedBox(width: 6),
-                    _buildTransportChip("grpc", "gRPC"),
-                    const SizedBox(width: 6),
-                    _buildTransportChip("xhttp", "HTTPUpgrade"),
-                    const SizedBox(width: 6),
-                    _buildTransportChip("tcp", "TCP Direct"),
-                  ],
-                ),
+                _buildTransportSelector(),
                 const SizedBox(height: 14),
 
                 Row(
@@ -2594,11 +2584,11 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                 Row(
                   children: [
                     Expanded(
-                      child: _buildFormField("Chemin WebSocket / xHTTP", _customPathCtrl, "/@abess237"),
+                      child: _buildFormField("Chemin du transport (si applicable)", _customPathCtrl, "/@abess237"),
                     ),
                     const SizedBox(width: 8),
                     Expanded(
-                      child: _buildFormField("SNI Bug Host (Zero-Rating)", _customSniCtrl, "crashlyticsreports-pa.googleapis.com"),
+                      child: _buildFormField("Nom SNI TLS (si utilisé)", _customSniCtrl, "vpn.example.com"),
                     ),
                   ],
                 ),
@@ -2899,15 +2889,66 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     );
   }
 
+  List<String> _transportOptionsFor(String protocol) {
+    const web = ['ws', 'grpc', 'httpupgrade', 'xhttp'];
+    switch (protocol.toLowerCase()) {
+      case 'vmess':
+        return [...web, 'raw', 'mkcp'];
+      case 'shadowsocks':
+        return [...web, 'raw', 'native'];
+      case 'vless':
+      case 'trojan':
+      default:
+        return web;
+    }
+  }
+
+  String _transportLabel(String transport) {
+    switch (transport) {
+      case 'ws': return 'WebSocket';
+      case 'grpc': return 'gRPC';
+      case 'httpupgrade': return 'HTTPUpgrade';
+      case 'xhttp': return 'XHTTP';
+      case 'raw': return 'RAW/TCP';
+      case 'mkcp': return 'mKCP/UDP';
+      case 'native': return 'TCP+UDP';
+      default: return transport.toUpperCase();
+    }
+  }
+
+  Widget _buildTransportSelector() {
+    final options = _transportOptionsFor(_customProtocol);
+    final chunkSize = options.length == 4 ? 2 : 3;
+    final rows = <Widget>[];
+    for (var start = 0; start < options.length; start += chunkSize) {
+      final end = start + chunkSize < options.length ? start + chunkSize : options.length;
+      final rowOptions = options.sublist(start, end);
+      rows.add(Row(
+        children: List<Widget>.generate(rowOptions.length * 2 - 1, (index) {
+          if (index.isOdd) return const SizedBox(width: 6);
+          final transport = rowOptions[index ~/ 2];
+          return _buildTransportChip(transport, _transportLabel(transport));
+        }),
+      ));
+      if (end < options.length) rows.add(const SizedBox(height: 6));
+    }
+    return Column(children: rows);
+  }
+
   Widget _buildProtocolChip(String id, String label) {
     final isSelected = _customProtocol == id;
     return Expanded(
       child: GestureDetector(
-        onTap: () => setState(() => _customProtocol = id),
+        onTap: () => setState(() {
+          _customProtocol = id;
+          if (!_transportOptionsFor(id).contains(_customTransport)) {
+            _customTransport = 'ws';
+          }
+        }),
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 8),
           decoration: BoxDecoration(
-            color: isSelected ? cyberCyan.withOpacity( 0.25) : const Color(0xFF030712),
+            color: isSelected ? cyberCyan.withOpacity(0.25) : const Color(0xFF030712),
             borderRadius: BorderRadius.circular(8),
             border: Border.all(color: isSelected ? cyberCyan : Colors.white12),
           ),
@@ -2934,13 +2975,14 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 8),
           decoration: BoxDecoration(
-            color: isSelected ? cyberGreen.withOpacity( 0.25) : const Color(0xFF030712),
+            color: isSelected ? cyberGreen.withOpacity(0.25) : const Color(0xFF030712),
             borderRadius: BorderRadius.circular(8),
             border: Border.all(color: isSelected ? cyberGreen : Colors.white12),
           ),
           child: Center(
             child: Text(
-              label.split(" ")[0],
+              label,
+              textAlign: TextAlign.center,
               style: TextStyle(
                 color: isSelected ? cyberGreen : Colors.white60,
                 fontSize: 10,
@@ -5152,17 +5194,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
 
                 const Text("TRANSPORT STREAM", style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 6),
-                Row(
-                  children: [
-                    _buildTransportChip("ws", "WebSocket (ws)"),
-                    const SizedBox(width: 6),
-                    _buildTransportChip("grpc", "gRPC"),
-                    const SizedBox(width: 6),
-                    _buildTransportChip("xhttp", "HTTPUpgrade"),
-                    const SizedBox(width: 6),
-                    _buildTransportChip("tcp", "TCP Direct"),
-                  ],
-                ),
+                _buildTransportSelector(),
                 const SizedBox(height: 14),
 
                 Row(
@@ -5183,11 +5215,11 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                 Row(
                   children: [
                     Expanded(
-                      child: _buildFormField("Chemin WebSocket / xHTTP", _customPathCtrl, "/@abess237"),
+                      child: _buildFormField("Chemin du transport (si applicable)", _customPathCtrl, "/@abess237"),
                     ),
                     const SizedBox(width: 8),
                     Expanded(
-                      child: _buildFormField("SNI Bug Host (Zero-Rating)", _customSniCtrl, "crashlyticsreports-pa.googleapis.com"),
+                      child: _buildFormField("Nom SNI TLS (si utilisé)", _customSniCtrl, "vpn.example.com"),
                     ),
                   ],
                 ),
