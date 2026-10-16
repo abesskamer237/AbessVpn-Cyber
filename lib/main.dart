@@ -1275,37 +1275,87 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
   }
 
   // 3. IMPORTATION PAR LIEN OU FICHIER CRYPTÉ
-  void _importServerByEncryptedLink(String link) {
-    _addLog('ANALYSE DU LIEN CRYPTÉ...');
+  Future<void> _importServerByEncryptedLink(String link) async {
+    _addLog('VALIDATION DU LIEN CHIFFRÉ SUR LE SERVEUR...');
     final clean = link.trim();
     if (clean.isEmpty) return;
-
-    try {
-      final newServer = ImportedVpnServer(
-        name: 'CONFIG CRYPTÉE .ABESS',
-        address: 'abess-ops-hub-d-ploiement-docker.ai.studio',
-        port: 443,
-        path: '/@abess237',
-        sni: 'crashlyticsreports-pa.googleapis.com',
-        uuid: 'abe55237-0237-4237-8237-ab3552370237',
-        bandwidthGb: 20.0,
-        bandwidthUsedGb: 0.0,
-        expiresAt: DateTime.now().add(const Duration(days: 30)),
-        encryptedLink: clean,
-      );
-      if (mounted) {
-        setState(() => currentServer = newServer);
-      }
-      _saveCurrentServer();
-      _addLog('FICHIER CRYPTÉ CHARGÉ AVEC SUCCÈS');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Configuration cryptée importée avec succès !')),
-        );
-      }
-    } catch (e) {
-      _addLog('ERREUR DE LECTURE DU FICHIER: $e');
+    if (!clean.startsWith('abess://')) {
+      _showToast('Le lien doit commencer par abess://');
+      return;
     }
+    if (_deviceId.isEmpty) await _initDeviceId();
+
+    for (final base in _masterServerUrls) {
+      try {
+        final response = await http.post(
+          Uri.parse('$base/api/v1/auth/import-link'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'link': clean,
+            'deviceId': _deviceId,
+            'model': 'Android Device',
+          }),
+        ).timeout(const Duration(seconds: 5));
+
+        final dynamic decoded = jsonDecode(response.body);
+        if (response.statusCode == 200 && decoded is Map && decoded['valid'] == true) {
+          final data = Map<String, dynamic>.from(decoded);
+          final dynamic rawConfig = data['serverConfig'];
+          final srvConf = rawConfig is Map
+              ? Map<String, dynamic>.from(rawConfig)
+              : <String, dynamic>{};
+
+          final newServer = ImportedVpnServer(
+            name: data['plan']?.toString() ?? 'ABESS VPN',
+            address: srvConf['address']?.toString() ?? '',
+            port: (srvConf['port'] as num?)?.toInt() ?? 443,
+            path: srvConf['path']?.toString() ?? '/@abess237',
+            sni: srvConf['sni']?.toString() ?? '',
+            uuid: srvConf['uuid']?.toString() ?? '',
+            protocol: srvConf['protocol']?.toString() ?? 'vless',
+            transport: srvConf['transport']?.toString() ?? 'ws',
+            bandwidthGb: (data['bandwidthGb'] as num?)?.toDouble() ?? 0.0,
+            bandwidthUsedGb: (data['bandwidthUsedGb'] as num?)?.toDouble() ?? 0.0,
+            expiresAt: DateTime.tryParse(data['expiresAt']?.toString() ?? '')
+                ?? DateTime.now(),
+            token: data['token']?.toString(),
+            encryptedLink: clean,
+            deviceLimit: (data['deviceLimit'] as num?)?.toInt() ?? 1,
+          );
+
+          if (newServer.address.isEmpty || newServer.uuid.isEmpty || newServer.token == null) {
+            _addLog('REFUS SERVEUR : CONFIGURATION INCOMPLÈTE');
+            _showToast('Le serveur a renvoyé une configuration incomplète.');
+            return;
+          }
+
+          if (mounted) setState(() {
+            currentServer = newServer;
+            _currentNavIndex = 0;
+          });
+          await _saveCurrentServer();
+          _addLog('LIEN ABESS VALIDÉ • ${newServer.bandwidthGb} Go • ${_formatRemaining(newServer.expiresAt)}');
+          _showToast('Licence validée et configuration importée.');
+          return;
+        }
+
+        if (response.statusCode == 400 ||
+            response.statusCode == 401 ||
+            response.statusCode == 403) {
+          final message = decoded is Map
+              ? decoded['error']?.toString() ?? 'Lien invalide ou licence refusée.'
+              : 'Lien invalide ou licence refusée.';
+          _addLog('IMPORT REFUSÉ : $message');
+          _showToast(message);
+          return;
+        }
+      } catch (_) {
+        // Try the next configured control-plane endpoint.
+      }
+    }
+
+    _addLog('ÉCHEC : IMPOSSIBLE DE VALIDER LE LIEN ABESS');
+    _showToast('Serveur indisponible ou lien chiffré invalide.');
   }
 
   // 4. CRÉATION DE CONFIGURATION / TOKEN (ENREGISTRÉ SUR LE SERVEUR)
