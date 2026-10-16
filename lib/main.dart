@@ -290,7 +290,10 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
   final List<String> _logs = [];
 
   // URLs Serveurs Maîtres AbessVpn
+  static const String _configuredApiBaseUrl = String.fromEnvironment('ABESS_API_BASE_URL', defaultValue: '');
+
   final List<String> _masterServerUrls = [
+    if (_configuredApiBaseUrl.trim().isNotEmpty) _configuredApiBaseUrl.trim().replaceFirst(RegExp(r'/+$'), ''),
     'https://ais-pre-byhlddl5hshwycdttmipl7-953522022413.europe-west2.run.app',
     'https://ais-dev-byhlddl5hshwycdttmipl7-953522022413.europe-west2.run.app',
     'https://abess-ops-hub-d-ploiement-docker-1.ai.studio',
