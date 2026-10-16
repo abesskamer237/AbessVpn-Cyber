@@ -1103,60 +1103,164 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
   }
 
   Map<String, dynamic> _buildV2RayVlessConfig(ImportedVpnServer srv) {
-    if (srv.protocol.toLowerCase() != 'vless' || srv.transport.toLowerCase() != 'ws') {
+    final protocol = srv.protocol.toLowerCase();
+    final transport = srv.transport.toLowerCase();
+    const webTransports = ['ws', 'grpc', 'httpupgrade', 'xhttp'];
+    final isWebTransport = webTransports.contains(transport);
+    final supported = switch (protocol) {
+      'vless' => isWebTransport,
+      'trojan' => isWebTransport,
+      'vmess' => isWebTransport || transport == 'raw' || transport == 'mkcp',
+      'shadowsocks' => isWebTransport || transport == 'raw' || transport == 'native',
+      _ => false,
+    };
+    if (!supported) {
       throw UnsupportedError(
-        'Configuration non prise en charge par ce client : ${srv.protocol.toUpperCase()} + ${srv.transport.toUpperCase()}. '
-        'Cette version attend VLESS + WebSocket + TLS.',
+        'Profil non pris en charge : \${protocol.toUpperCase()} + \${transport.toUpperCase()}.',
       );
     }
+    if (transport == 'mkcp' && (srv.seed == null || srv.seed!.trim().isEmpty)) {
+      throw UnsupportedError('Le profil VMess mKCP/UDP exige le seed fourni par le serveur.');
+    }
+
+    final Map<String, dynamic> outboundSettings;
+    switch (protocol) {
+      case 'vless':
+        outboundSettings = {
+          'vnext': [
+            {
+              'address': srv.address,
+              'port': srv.port,
+              'users': [
+                {'id': srv.uuid, 'encryption': 'none', 'level': 0}
+              ]
+            }
+          ]
+        };
+        break;
+      case 'vmess':
+        outboundSettings = {
+          'vnext': [
+            {
+              'address': srv.address,
+              'port': srv.port,
+              'users': [
+                {'id': srv.uuid, 'alterId': 0, 'security': 'auto', 'level': 0}
+              ]
+            }
+          ]
+        };
+        break;
+      case 'trojan':
+        outboundSettings = {
+          'servers': [
+            {'address': srv.address, 'port': srv.port, 'password': srv.uuid, 'level': 0}
+          ]
+        };
+        break;
+      case 'shadowsocks':
+        outboundSettings = {
+          'servers': [
+            {'address': srv.address, 'port': srv.port, 'method': 'aes-128-gcm', 'password': srv.uuid}
+          ]
+        };
+        break;
+      default:
+        throw UnsupportedError('Protocole Xray non pris en charge : $protocol');
+    }
+
+    final Map<String, dynamic>? streamSettings;
+    switch (transport) {
+      case 'ws':
+        streamSettings = {
+          'network': 'ws',
+          'security': 'tls',
+          'tlsSettings': {'allowInsecure': false, 'serverName': srv.sni},
+          'wsSettings': {'path': srv.path, 'headers': {'Host': srv.address}}
+        };
+        break;
+      case 'grpc':
+        streamSettings = {
+          'network': 'grpc',
+          'security': 'tls',
+          'tlsSettings': {'allowInsecure': false, 'serverName': srv.sni},
+          'grpcSettings': {
+            'serviceName': srv.path.replaceFirst(RegExp(r'^/+'), ''),
+            'multiMode': false
+          }
+        };
+        break;
+      case 'httpupgrade':
+        streamSettings = {
+          'network': 'httpupgrade',
+          'security': 'tls',
+          'tlsSettings': {'allowInsecure': false, 'serverName': srv.sni},
+          'httpupgradeSettings': {'path': srv.path, 'host': srv.address}
+        };
+        break;
+      case 'xhttp':
+        streamSettings = {
+          'network': 'xhttp',
+          'security': 'tls',
+          'tlsSettings': {'allowInsecure': false, 'serverName': srv.sni},
+          'xhttpSettings': {'path': srv.path, 'mode': 'auto'}
+        };
+        break;
+      case 'raw':
+        streamSettings = {
+          'network': 'tcp',
+          'security': 'none',
+          'tcpSettings': {'header': {'type': 'none'}}
+        };
+        break;
+      case 'mkcp':
+        streamSettings = {
+          'network': 'kcp',
+          'security': 'none',
+          'kcpSettings': {
+            'mtu': 1350,
+            'tti': 50,
+            'uplinkCapacity': 5,
+            'downlinkCapacity': 20,
+            'congestion': false,
+            'readBufferSize': 2,
+            'writeBufferSize': 2,
+            'header': {'type': 'none'},
+            'seed': srv.seed
+          }
+        };
+        break;
+      case 'native':
+        // Native Shadowsocks carries TCP and UDP through its own encrypted protocol.
+        streamSettings = null;
+        break;
+      default:
+        throw UnsupportedError('Transport Xray non pris en charge : $transport');
+    }
+
+    final proxy = <String, dynamic>{
+      'tag': 'proxy',
+      'protocol': protocol,
+      'settings': outboundSettings,
+      if (streamSettings != null) 'streamSettings': streamSettings,
+      if (_isMuxEnabled && (protocol == 'vless' || protocol == 'vmess' || protocol == 'trojan'))
+        'mux': {'enabled': true, 'concurrency': 8},
+    };
+
     return {
-      "log": {"loglevel": "warning"},
-      "inbounds": [
+      'log': {'loglevel': 'warning'},
+      'inbounds': [
         {
-          "tag": "socks-in",
-          "port": 10808,
-          "listen": "127.0.0.1",
-          "protocol": "socks",
-          "settings": {"auth": "noauth", "udp": true}
+          'tag': 'socks-in',
+          'port': 10808,
+          'listen': '127.0.0.1',
+          'protocol': 'socks',
+          'settings': {'auth': 'noauth', 'udp': true}
         }
       ],
-      "outbounds": [
-        {
-          "tag": "proxy",
-          "protocol": "vless",
-          "settings": {
-            "vnext": [
-              {
-                "address": srv.address,
-                "port": srv.port,
-                "users": [
-                  {
-                    "id": srv.uuid,
-                    "encryption": "none",
-                    "level": 0
-                  }
-                ]
-              }
-            ]
-          },
-          "streamSettings": {
-            "network": "ws",
-            "security": "tls",
-            "tlsSettings": {
-              "allowInsecure": false,
-              "serverName": srv.sni
-            },
-            "wsSettings": {
-              "path": srv.path,
-              "headers": {"Host": srv.address}
-            }
-          }
-        },
-        {
-          "tag": "direct",
-          "protocol": "freedom",
-          "settings": {}
-        }
+      'outbounds': [
+        proxy,
+        {'tag': 'direct', 'protocol': 'freedom', 'settings': {}}
       ]
     };
   }
