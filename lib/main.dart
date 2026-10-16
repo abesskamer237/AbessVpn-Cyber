@@ -3092,7 +3092,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                   activeTrackColor: cyberGreen,
                   title: const Text('Sécurité TLS', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
                   subtitle: Text(
-                    _customTlsEnabled && !{'native', 'kcp', 'mkcp'}.contains(_customTransport)
+                    _customTlsEnabled && !{'native', 'raw', 'tcp', 'kcp', 'mkcp'}.contains(_customTransport)
                         ? 'TLS activé : le serveur distant doit présenter un certificat valide et accepter ce SNI.'
                         : 'TLS désactivé pour ce mode de transport.',
                     style: const TextStyle(color: Colors.white54, fontSize: 10),
