@@ -144,11 +144,16 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
   Timer? _telemetryTimer;
   Timer? _pingTimer;
   int _connectionDurationSeconds = 0;
-  double _currentDownloadSpeed = 0.0; // Mo/s
-  double _currentUploadSpeed = 0.0; // Mo/s
-  double _totalDownloadMb = 0.0; // Mo
-  double _totalUploadMb = 0.0; // Mo
-  int _currentPingMs = 24; // ms
+  double _currentDownloadSpeed = 0.0; // MiB/s from Xray status
+  double _currentUploadSpeed = 0.0; // MiB/s from Xray status
+  double _totalDownloadMb = 0.0; // MiB transferred
+  double _totalUploadMb = 0.0; // MiB transferred
+  int _currentDownloadBytes = 0;
+  int _currentUploadBytes = 0;
+  int _lastReportedDownloadBytes = 0;
+  int _lastReportedUploadBytes = 0;
+  double _quotaUsageAtSessionStartGb = 0.0;
+  int _currentPingMs = 0; // ms; zero means not yet measured
   final String _virtualIp = '10.8.0.2';
   String _deviceId = '';
 
@@ -356,13 +361,32 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
         onStatusChanged: (status) {
           if (!mounted) return;
           setState(() {
+            final wasConnected = isConnected;
             vpnStatus = status.state;
+
+            // Use the counters supplied by flutter_v2ray/Xray instead of
+            // generating plausible-looking but fictitious traffic values.
+            _currentDownloadBytes = math.max(0, status.download);
+            _currentUploadBytes = math.max(0, status.upload);
+            _currentDownloadSpeed = math.max(0, status.downloadSpeed) / (1024 * 1024);
+            _currentUploadSpeed = math.max(0, status.uploadSpeed) / (1024 * 1024);
+            _totalDownloadMb = _currentDownloadBytes / (1024 * 1024);
+            _totalUploadMb = _currentUploadBytes / (1024 * 1024);
+
+            if (currentServer != null && currentServer!.token != null) {
+              final sessionUsageGb = (_currentDownloadBytes + _currentUploadBytes) / (1024 * 1024 * 1024);
+              currentServer!.bandwidthUsedGb = math.max(
+                currentServer!.bandwidthUsedGb,
+                _quotaUsageAtSessionStartGb + sessionUsageGb,
+              );
+            }
+
             if (status.state == 'CONNECTED') {
               isConnected = true;
               isConnecting = false;
               _reconnectAttempts = 0;
               killSwitchAlert = false;
-              _startTelemetry();
+              if (!wasConnected) _startTelemetry();
             } else if (status.state == 'DISCONNECTED') {
               isConnected = false;
               isConnecting = false;
@@ -458,32 +482,41 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     await prefs.setString('abess_imported_server', jsonEncode(map));
   }
 
-  // Mesure réelle du Ping vers le serveur maître
+  // Mesure la latence réelle : tunnel actif d'abord, puis API de contrôle.
   Future<void> _measureRealPing() async {
+    if (isV2rayInitialized && isConnected) {
+      try {
+        final latency = await v2ray.getConnectedServerDelay();
+        if (latency >= 0 && mounted) {
+          setState(() => _currentPingMs = latency);
+          return;
+        }
+      } catch (_) {}
+    }
+
     for (final base in _masterServerUrls) {
       try {
         final stopwatch = Stopwatch()..start();
         final res = await http.get(Uri.parse('$base/api/v1/ping')).timeout(const Duration(seconds: 3));
         stopwatch.stop();
         if (res.statusCode == 200) {
-          final latency = stopwatch.elapsedMilliseconds;
-          if (mounted) {
-            setState(() {
-              _currentPingMs = latency > 0 ? latency : 18;
-            });
-          }
+          if (mounted) setState(() => _currentPingMs = stopwatch.elapsedMilliseconds);
           return;
         }
       } catch (_) {}
     }
+
+    if (mounted) setState(() => _currentPingMs = 0);
   }
 
-  // Télémétrie en Direct et Synchronisation Quota Serveur
+  // Télémétrie réelle provenant du statut Xray et synchronisation des deltas.
   void _startTelemetry() {
     _telemetryTimer?.cancel();
     _pingTimer?.cancel();
     _connectionDurationSeconds = 0;
-    final rnd = math.Random();
+    _quotaUsageAtSessionStartGb = currentServer?.bandwidthUsedGb ?? 0.0;
+    _lastReportedDownloadBytes = _currentDownloadBytes;
+    _lastReportedUploadBytes = _currentUploadBytes;
 
     _pingTimer = Timer.periodic(const Duration(seconds: 6), (_) => _measureRealPing());
 
@@ -492,13 +525,6 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
 
       setState(() {
         _connectionDurationSeconds++;
-        _currentDownloadSpeed = 12.8 + rnd.nextDouble() * 5.4;
-        _currentUploadSpeed = 2.1 + rnd.nextDouble() * 2.2;
-
-        final secMb = (_currentDownloadSpeed + _currentUploadSpeed);
-        _totalDownloadMb += _currentDownloadSpeed;
-        _totalUploadMb += _currentUploadSpeed;
-
         _speedHistoryDownload.add(FlSpot(_speedHistoryDownload.length.toDouble(), _currentDownloadSpeed));
         if (_speedHistoryDownload.length > 15) {
           _speedHistoryDownload.removeAt(0);
@@ -513,16 +539,6 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
             _speedHistoryUpload[i] = FlSpot(i.toDouble(), _speedHistoryUpload[i].y);
           }
         }
-
-        if (currentServer != null) {
-          final addedGb = secMb / 1024.0;
-          currentServer!.bandwidthUsedGb += addedGb;
-
-          if (currentServer!.isQuotaExceeded) {
-            _disconnectVpn();
-            _showQuotaExceededAlert();
-          }
-        }
       });
 
       if (_connectionDurationSeconds % 10 == 0 && currentServer?.token != null) {
@@ -533,6 +549,9 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
 
   Future<void> _syncUsageWithServer() async {
     if (currentServer?.token == null) return;
+    final downloadDelta = math.max(0, _currentDownloadBytes - _lastReportedDownloadBytes);
+    final uploadDelta = math.max(0, _currentUploadBytes - _lastReportedUploadBytes);
+
     for (final base in _masterServerUrls) {
       try {
         final res = await http.post(
@@ -540,26 +559,40 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode({
             'token': currentServer!.token,
-            'bytesDownloaded': (_currentDownloadSpeed * 10 * 1024 * 1024).toInt(),
-            'bytesUploaded': (_currentUploadSpeed * 10 * 1024 * 1024).toInt(),
+            'bytesDownloaded': downloadDelta,
+            'bytesUploaded': uploadDelta,
             'durationSeconds': 10,
             'deviceId': _deviceId,
           }),
         ).timeout(const Duration(seconds: 3));
 
-        if (res.statusCode == 200) {
-          final data = jsonDecode(res.body);
-          if (data['isQuotaExceeded'] == true) {
-            _disconnectVpn();
-            _showQuotaExceededAlert();
-            return;
-          }
-          if (data['isExpired'] == true) {
-            _disconnectVpn();
-            _showExpiredAlert();
-            return;
+        if (res.statusCode != 200) continue;
+        final data = jsonDecode(res.body);
+        _lastReportedDownloadBytes = _currentDownloadBytes;
+        _lastReportedUploadBytes = _currentUploadBytes;
+
+        if (data['bandwidthUsedGb'] is num && currentServer != null) {
+          if (mounted) {
+            setState(() {
+              currentServer!.bandwidthUsedGb = math.max(
+                currentServer!.bandwidthUsedGb,
+                (data['bandwidthUsedGb'] as num).toDouble(),
+              );
+            });
           }
         }
+
+        if (data['isQuotaExceeded'] == true) {
+          await _disconnectVpn();
+          _showQuotaExceededAlert();
+          return;
+        }
+        if (data['isExpired'] == true) {
+          await _disconnectVpn();
+          _showExpiredAlert();
+          return;
+        }
+        return;
       } catch (_) {}
     }
   }
@@ -693,8 +726,14 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
             int progress = 0;
             String status = 'Prêt à tester la bande passante réelle';
             String verdict = '';
+            bool pingSucceeded = false;
+            bool downloadSucceeded = false;
+            bool uploadSucceeded = false;
 
             Future<void> runTest() async {
+              pingSucceeded = false;
+              downloadSucceeded = false;
+              uploadSucceeded = false;
               setMState(() {
                 isTesting = true;
                 progress = 15;
@@ -705,11 +744,11 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                 final sw = Stopwatch()..start();
                 final res = await http.get(Uri.parse('${_masterServerUrls[0]}/api/v1/ping')).timeout(const Duration(seconds: 4));
                 sw.stop();
-                if (res.statusCode == 200) {
-                  testPing = math.max(12, sw.elapsedMilliseconds);
-                }
+                if (res.statusCode != 200) throw StateError('Ping HTTP ${res.statusCode}');
+                testPing = sw.elapsedMilliseconds;
+                pingSucceeded = true;
               } catch (_) {
-                testPing = math.max(18, _currentPingMs);
+                testPing = 0;
               }
 
               setMState(() {
@@ -721,12 +760,13 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                 final sw = Stopwatch()..start();
                 final res = await http.get(Uri.parse('${_masterServerUrls[0]}/api/v1/speedtest/download?bytes=1048576')).timeout(const Duration(seconds: 5));
                 sw.stop();
+                if (res.statusCode != 200 || res.bodyBytes.isEmpty) throw StateError('Download HTTP ${res.statusCode}');
                 final secs = math.max(0.05, sw.elapsedMilliseconds / 1000.0);
                 final mb = res.bodyBytes.length / (1024.0 * 1024.0);
-                testDl = (mb / secs);
-                if (testDl < 5.0) testDl = 15.4 + math.Random().nextDouble() * 4.2;
+                testDl = mb / secs;
+                downloadSucceeded = true;
               } catch (_) {
-                testDl = 16.2;
+                testDl = 0.0;
               }
 
               setMState(() {
@@ -737,26 +777,32 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
               try {
                 final sw = Stopwatch()..start();
                 final dummy = List<int>.filled(256 * 1024, 65);
-                await http.post(
+                final response = await http.post(
                   Uri.parse('${_masterServerUrls[0]}/api/v1/speedtest/upload'),
                   headers: {'Content-Type': 'application/octet-stream'},
                   body: dummy,
                 ).timeout(const Duration(seconds: 5));
                 sw.stop();
+                if (response.statusCode != 200) throw StateError('Upload HTTP ${response.statusCode}');
                 final secs = math.max(0.05, sw.elapsedMilliseconds / 1000.0);
-                testUl = (0.25 / secs);
-                if (testUl < 1.0) testUl = 3.8 + math.Random().nextDouble() * 2.1;
+                testUl = (dummy.length / (1024.0 * 1024.0)) / secs;
+                uploadSucceeded = true;
               } catch (_) {
-                testUl = 4.1;
+                testUl = 0.0;
               }
 
               setMState(() {
                 progress = 100;
                 isTesting = false;
-                status = 'Test complet achevé avec succès !';
-                verdict = testPing < 70
-                    ? 'EXCELLENT : Idéal pour Streaming 4K Ultra HD, Jeux en Ligne et Téléchargements.'
-                    : 'BONNE CONNEXION : Navigation fluide et Réseaux sociaux.';
+                final allSucceeded = pingSucceeded && downloadSucceeded && uploadSucceeded;
+                status = allSucceeded
+                    ? 'Mesures réelles terminées.'
+                    : 'Test partiel : une ou plusieurs mesures ont échoué.';
+                verdict = allSucceeded
+                    ? (testPing < 70
+                        ? 'EXCELLENT : latence mesurée sous 70 ms.'
+                        : 'LATENCE MESURÉE : vérifiez les valeurs avant d’évaluer la qualité.')
+                    : 'Certaines valeurs sont indisponibles. Aucun débit de remplacement n’a été inventé.';
               });
               _addLog('[SPEEDTEST] Ping: $testPing ms • DL: ${testDl.toStringAsFixed(1)} Mo/s • UL: ${testUl.toStringAsFixed(1)} Mo/s');
             }
@@ -947,25 +993,32 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
           proxyOnly: false,
         );
       } else {
-        await Future.delayed(const Duration(milliseconds: 700));
         if (mounted) {
           setState(() {
-            isConnected = true;
+            isConnected = false;
             isConnecting = false;
+            vpnStatus = 'DISCONNECTED';
           });
-          _startTelemetry();
         }
+        _userWantedConnection = false;
+        _addLog('CONNEXION REFUSÉE : MOTEUR XRAY NON INITIALISÉ');
+        _showToast('Le moteur VPN n’est pas prêt. Vérifiez les logs puis réessayez.');
+        return;
       }
-      _addLog('TUNNEL SÉCURISÉ ACTIF • CHIFFREMENT VLESS');
+      _addLog('COMMANDE DE CONNEXION ENVOYÉE AU MOTEUR XRAY');
     } catch (e) {
-      _addLog('NOTE DÉMARRAGE: $e');
+      _userWantedConnection = false;
+      _reconnectTimer?.cancel();
+      _addLog('ÉCHEC DE CONNEXION : $e');
       if (mounted) {
         setState(() {
-          isConnected = true;
+          isConnected = false;
           isConnecting = false;
+          vpnStatus = 'DISCONNECTED';
         });
-        _startTelemetry();
       }
+      _stopTelemetry();
+      _showToast('Connexion VPN impossible. Consultez les logs.');
     }
   }
 
@@ -2044,7 +2097,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        "$_currentPingMs ms",
+                        _currentPingMs > 0 ? '$_currentPingMs ms' : '—',
                         style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
                       ),
                       const Text(
