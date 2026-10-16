@@ -1095,12 +1095,13 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
   }
 
   Map<String, dynamic> _buildV2RayVlessConfig(ImportedVpnServer srv) {
-    // Miroir des profils émis par le panneau ABESS. Les transports HTTP
-    // passent par TLS sur TCP/443; le mode natif TCP/UDP est réservé à SS.
+    // Les transports HTTP sont protégés par TLS sur TCP/443.
+    // RAW/TCP et mKCP/UDP sont réservés à VMess (chiffrement au niveau du protocole).
+    // Shadowsocks natif transporte directement TCP et UDP sur le port 10050.
     final protocol = srv.protocol.toLowerCase();
     final transport = srv.transport.toLowerCase();
     const supportedProtocols = {'vless', 'vmess', 'trojan', 'shadowsocks'};
-    const supportedTransports = {'ws', 'grpc', 'httpupgrade', 'xhttp', 'native'};
+    const supportedTransports = {'ws', 'grpc', 'httpupgrade', 'xhttp', 'raw', 'kcp', 'native'};
 
     if (!supportedProtocols.contains(protocol) || !supportedTransports.contains(transport)) {
       throw UnsupportedError(
@@ -1109,6 +1110,9 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     }
     if (transport == 'native' && protocol != 'shadowsocks') {
       throw UnsupportedError('Le mode TCP + UDP natif est disponible uniquement avec Shadowsocks.');
+    }
+    if ((transport == 'raw' || transport == 'kcp') && protocol != 'vmess') {
+      throw UnsupportedError('RAW/TCP et mKCP/UDP sont réservés à VMess sur ce serveur.');
     }
 
     final Map<String, dynamic> outboundSettings;
@@ -1203,17 +1207,40 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
             'xhttpSettings': {'path': srv.path, 'mode': 'auto'}
           };
           break;
+        case 'raw':
+          transportSettings = {
+            'network': 'raw',
+            'rawSettings': {'header': {'type': 'none'}}
+          };
+          break;
+        case 'kcp':
+          transportSettings = {
+            'network': 'kcp',
+            'kcpSettings': {
+              'mtu': 1350,
+              'tti': 20,
+              'uplinkCapacity': 5,
+              'downlinkCapacity': 20,
+              'congestion': false,
+              'readBufferSize': 2,
+              'writeBufferSize': 2,
+              'header': {'type': 'none'}
+            }
+          };
+          break;
         default:
           throw UnsupportedError('Transport non pris en charge.');
       }
 
+      final usesTls = {'ws', 'grpc', 'httpupgrade', 'xhttp'}.contains(transport);
       streamSettings = {
         ...transportSettings,
-        'security': 'tls',
-        'tlsSettings': {
-          'allowInsecure': false,
-          'serverName': srv.sni.isNotEmpty ? srv.sni : srv.address
-        }
+        'security': usesTls ? 'tls' : 'none',
+        if (usesTls)
+          'tlsSettings': {
+            'allowInsecure': false,
+            'serverName': srv.sni.isNotEmpty ? srv.sni : srv.address
+          }
       };
     }
 
@@ -1225,8 +1252,9 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     if (streamSettings != null) {
       proxyOutbound['streamSettings'] = streamSettings;
     }
-    if (_isMuxEnabled && transport != 'native') {
+    if (_isMuxEnabled && !{'native', 'grpc', 'kcp'}.contains(transport)) {
       // XUDP transporte les paquets UDP dans le tunnel quand le protocole le permet.
+      // Xray recommande de ne pas activer MUX pour gRPC/HTTP2; mKCP possède déjà son transport UDP.
       proxyOutbound['mux'] = {
         'enabled': true,
         'concurrency': 8,
@@ -2575,6 +2603,18 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                     _buildTransportChip("xhttp", "XHTTP"),
                   ],
                 ),
+                if (_customProtocol == "vmess") ...[
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      _buildTransportChip("raw", "RAW / TCP 10060"),
+                      const SizedBox(width: 6),
+                      _buildTransportChip("kcp", "mKCP / UDP 10061"),
+                      const Expanded(child: SizedBox()),
+                      const Expanded(child: SizedBox()),
+                    ],
+                  ),
+                ],
                 if (_customProtocol == "shadowsocks") ...[
                   const SizedBox(height: 6),
                   Row(
@@ -2916,9 +2956,14 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     return Expanded(
       child: GestureDetector(
         onTap: () => setState(() {
-          if (id != 'shadowsocks' && _customTransport == 'native') {
+          final oldTransport = _customTransport;
+          final incompatibleNative = id != 'shadowsocks' && oldTransport == 'native';
+          final incompatibleDirect = id != 'vmess' && (oldTransport == 'raw' || oldTransport == 'kcp');
+          if (incompatibleNative || incompatibleDirect) {
             _customTransport = 'ws';
-            if (_customPortCtrl.text.trim() == '10050') _customPortCtrl.text = '443';
+            if (['10050', '10060', '10061'].contains(_customPortCtrl.text.trim())) {
+              _customPortCtrl.text = '443';
+            }
           }
           _customProtocol = id;
         }),
@@ -2948,14 +2993,29 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     final isSelected = _customTransport == id;
     return Expanded(
       child: GestureDetector(
-        onTap: () => setState(() {
-          if (id == 'native' && _customProtocol == 'shadowsocks' && _customPortCtrl.text.trim() == '443') {
-            _customPortCtrl.text = '10050';
-          } else if (_customTransport == 'native' && _customPortCtrl.text.trim() == '10050' && id != 'native') {
-            _customPortCtrl.text = '443';
+        onTap: () {
+          if (id == 'native' && _customProtocol != 'shadowsocks') {
+            _showToast('Le transport TCP + UDP natif nécessite Shadowsocks.');
+            return;
           }
-          _customTransport = id;
-        }),
+          if ((id == 'raw' || id == 'kcp') && _customProtocol != 'vmess') {
+            _showToast('RAW/TCP et mKCP/UDP nécessitent VMess sur le serveur ABESS.');
+            return;
+          }
+          setState(() {
+            final oldTransport = _customTransport;
+            if (id == 'native') {
+              _customPortCtrl.text = '10050';
+            } else if (id == 'raw') {
+              _customPortCtrl.text = '10060';
+            } else if (id == 'kcp') {
+              _customPortCtrl.text = '10061';
+            } else if (oldTransport == 'native' || oldTransport == 'raw' || oldTransport == 'kcp') {
+              _customPortCtrl.text = '443';
+            }
+            _customTransport = id;
+          });
+        },
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 8),
           decoration: BoxDecoration(
