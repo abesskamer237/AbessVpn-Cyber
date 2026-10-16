@@ -5158,15 +5158,26 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                 const SizedBox(height: 6),
                 Row(
                   children: [
-                    _buildTransportChip("ws", "WebSocket (ws)"),
+                    _buildTransportChip("ws", "WebSocket"),
                     const SizedBox(width: 6),
                     _buildTransportChip("grpc", "gRPC"),
                     const SizedBox(width: 6),
-                    _buildTransportChip("xhttp", "HTTPUpgrade"),
+                    _buildTransportChip("httpupgrade", "HTTPUpgrade"),
                     const SizedBox(width: 6),
-                    _buildTransportChip("tcp", "TCP Direct"),
+                    _buildTransportChip("xhttp", "XHTTP"),
                   ],
                 ),
+                if (_customProtocol == "shadowsocks") ...[
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      _buildTransportChip("native", "TCP + UDP natifs"),
+                      const Expanded(child: SizedBox()),
+                      const Expanded(child: SizedBox()),
+                      const Expanded(child: SizedBox()),
+                    ],
+                  ),
+                ],
                 const SizedBox(height: 14),
 
                 Row(
