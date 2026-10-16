@@ -184,6 +184,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
   String _customProtocol = "vless";
   String _customTransport = "ws";
   final TextEditingController _customHostCtrl = TextEditingController();
+  final TextEditingController _customWsHostCtrl = TextEditingController();
   final TextEditingController _customPortCtrl = TextEditingController(text: "443");
   final TextEditingController _customPathCtrl = TextEditingController(text: "/@abess237");
   final TextEditingController _customUuidCtrl = TextEditingController();
@@ -224,7 +225,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
       protocol: _customProtocol,
       transport: _customTransport,
       tls: !{'native', 'raw', 'tcp', 'kcp', 'mkcp'}.contains(_customTransport),
-      wsHost: host,
+      wsHost: _customWsHostCtrl.text.trim(),
       bandwidthGb: 999.0,
       bandwidthUsedGb: 0.0,
       expiresAt: DateTime.now().add(const Duration(days: 365)),
@@ -433,6 +434,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     _createTokenCodeCtrl.dispose();
     _createPlanNameCtrl.dispose();
     _customHostCtrl.dispose();
+    _customWsHostCtrl.dispose();
     _customPortCtrl.dispose();
     _customPathCtrl.dispose();
     _customUuidCtrl.dispose();
@@ -1321,6 +1323,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
             'network': 'grpc',
             'grpcSettings': {
               'serviceName': srv.path.replaceFirst(RegExp(r'^/+'), ''),
+              'authority': srv.wsHost.isNotEmpty ? srv.wsHost : srv.address,
               'multiMode': false
             }
           };
@@ -1328,13 +1331,17 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
         case 'httpupgrade':
           transportSettings = {
             'network': 'httpupgrade',
-            'httpupgradeSettings': {'path': srv.path, 'host': srv.address}
+            'httpupgradeSettings': {'path': srv.path, 'host': srv.wsHost.isNotEmpty ? srv.wsHost : srv.address}
           };
           break;
         case 'xhttp':
           transportSettings = {
             'network': 'xhttp',
-            'xhttpSettings': {'path': srv.path, 'mode': 'auto'}
+            'xhttpSettings': {
+              'path': srv.path,
+              'host': srv.wsHost.isNotEmpty ? srv.wsHost : srv.address,
+              'mode': 'auto'
+            }
           };
           break;
         case 'raw':
@@ -1445,7 +1452,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
               transport: (srvConf['transport'] as String?) ?? 'ws',
               tls: (srvConf['security']?.toString().toLowerCase() ?? 'tls') != 'none',
               method: (srvConf['method'] as String?) ?? 'aes-128-gcm',
-              wsHost: (srvConf['wsHost'] as String?) ?? (srvConf['address'] as String?) ?? '',
+              wsHost: (srvConf['host'] ?? srvConf['wsHost'])?.toString() ?? '',
               bandwidthGb: (data['bandwidthGb'] as num?)?.toDouble() ?? 10.0,
               bandwidthUsedGb: (data['bandwidthUsedGb'] as num?)?.toDouble() ?? 0.0,
               expiresAt: DateTime.tryParse(data['expiresAt'] ?? '') ?? DateTime.now().add(const Duration(days: 30)),
@@ -1578,7 +1585,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
             transport: srvConf['transport']?.toString() ?? 'ws',
             tls: (srvConf['security']?.toString().toLowerCase() ?? 'tls') != 'none',
             method: srvConf['method']?.toString() ?? 'aes-128-gcm',
-            wsHost: srvConf['host']?.toString() ?? '',
+            wsHost: (srvConf['host'] ?? srvConf['wsHost'])?.toString() ?? '',
             bandwidthGb: (data['bandwidthGb'] as num?)?.toDouble() ?? 0.0,
             bandwidthUsedGb: (data['bandwidthUsedGb'] as num?)?.toDouble() ?? 0.0,
             expiresAt: DateTime.tryParse(data['expiresAt']?.toString() ?? '')
@@ -2781,12 +2788,22 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                 Row(
                   children: [
                     Expanded(
-                      child: _buildFormField("Chemin WebSocket / xHTTP", _customPathCtrl, "/@abess237"),
+                      child: _buildFormField("Host HTTP / WebSocket (en-tête Host)", _customWsHostCtrl, "host.exemple.com"),
                     ),
                     const SizedBox(width: 8),
                     Expanded(
-                      child: _buildFormField("SNI TLS (domaine couvert par le certificat)", _customSniCtrl, "vpn.ton-domaine.com"),
+                      child: _buildFormField("SNI TLS (domaine du certificat)", _customSniCtrl, "vpn.ton-domaine.com"),
                     ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildFormField("Chemin WebSocket / XHTTP", _customPathCtrl, "/@abess237"),
+                    ),
+                    const Expanded(child: SizedBox()),
                   ],
                 ),
                 const SizedBox(height: 10),
