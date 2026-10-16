@@ -239,6 +239,18 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
         final host = uri.host;
         final port = uri.port > 0 ? uri.port : 443;
         final uuid = uri.userInfo;
+        final rawTransport = (uri.queryParameters["type"] ?? "ws").toLowerCase();
+        final transport = switch (rawTransport) {
+          "tcp" || "raw" => "raw",
+          "kcp" || "mkcp" => "mkcp",
+          "splithttp" => "xhttp",
+          "websocket" => "ws",
+          _ => rawTransport,
+        };
+        if (!_transportOptionsFor(proto).contains(transport)) {
+          _showToast("Transport VLESS non pris en charge par ce serveur : $rawTransport");
+          return;
+        }
         final path = uri.queryParameters["path"] ?? "/@abess237";
         final sni = uri.queryParameters["sni"] ?? host;
 
@@ -250,7 +262,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
           sni: sni,
           uuid: uuid.isNotEmpty ? uuid : "abe55237-0237-4237-8237-ab3552370237",
           protocol: proto,
-          transport: uri.queryParameters["type"] ?? "ws",
+          transport: transport,
           bandwidthGb: 50.0,
           bandwidthUsedGb: 0.0,
           expiresAt: DateTime.now().add(const Duration(days: 30)),
@@ -263,8 +275,8 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
         _saveCurrentServer();
         _showToast("Lien $proto importé avec succès !");
       } else if (link.startsWith("vmess://") || link.startsWith("trojan://") || link.startsWith("ss://")) {
-        _addLog('IMPORT REFUSÉ : PROTOCOLE NON PRIS EN CHARGE PAR CETTE VERSION');
-        _showToast('Cette version prend en charge VLESS uniquement, avec WebSocket + TLS.');
+        _addLog('LIEN EXTERNE NON PRIS EN CHARGE : UTILISEZ UN TOKEN ABESS OU LE FORMULAIRE MULTI-PROTOCOLE');
+        _showToast('Pour VMess/Trojan/Shadowsocks, importez un token ABESS ou configurez le profil manuellement.');
       } else {
         _showToast("Format de lien non reconnu");
       }
@@ -446,6 +458,8 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
               path: map['path'] ?? '/@abess237',
               sni: map['sni'] ?? 'crashlyticsreports-pa.googleapis.com',
               uuid: map['uuid'] ?? 'abe55237-0237-4237-8237-ab3552370237',
+              protocol: map['protocol']?.toString() ?? 'vless',
+              transport: map['transport']?.toString() ?? 'ws',
               bandwidthGb: (map['bandwidthGb'] as num?)?.toDouble() ?? 10.0,
               bandwidthUsedGb: (map['bandwidthUsedGb'] as num?)?.toDouble() ?? 0.0,
               expiresAt: DateTime.tryParse(map['expiresAt'] ?? '') ?? DateTime.now().add(const Duration(days: 30)),
@@ -475,6 +489,8 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
       'path': currentServer!.path,
       'sni': currentServer!.sni,
       'uuid': currentServer!.uuid,
+      'protocol': currentServer!.protocol,
+      'transport': currentServer!.transport,
       'bandwidthGb': currentServer!.bandwidthGb,
       'bandwidthUsedGb': currentServer!.bandwidthUsedGb,
       'expiresAt': currentServer!.expiresAt.toIso8601String(),
@@ -1092,60 +1108,158 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
   }
 
   Map<String, dynamic> _buildV2RayVlessConfig(ImportedVpnServer srv) {
-    if (srv.protocol.toLowerCase() != 'vless' || srv.transport.toLowerCase() != 'ws') {
+    final protocol = srv.protocol.toLowerCase();
+    final transport = srv.transport.toLowerCase();
+    const webTransports = ['ws', 'grpc', 'httpupgrade', 'xhttp'];
+    final isWebTransport = webTransports.contains(transport);
+    final supported = switch (protocol) {
+      'vless' => isWebTransport,
+      'trojan' => isWebTransport,
+      'vmess' => isWebTransport || transport == 'raw' || transport == 'mkcp',
+      'shadowsocks' => isWebTransport || transport == 'raw' || transport == 'native',
+      _ => false,
+    };
+    if (!supported) {
       throw UnsupportedError(
-        'Configuration non prise en charge par ce client : ${srv.protocol.toUpperCase()} + ${srv.transport.toUpperCase()}. '
-        'Cette version attend VLESS + WebSocket + TLS.',
+        'Profil non pris en charge : ${protocol.toUpperCase()} + ${transport.toUpperCase()}.',
       );
     }
+    final Map<String, dynamic> outboundSettings;
+    switch (protocol) {
+      case 'vless':
+        outboundSettings = {
+          'vnext': [
+            {
+              'address': srv.address,
+              'port': srv.port,
+              'users': [
+                {'id': srv.uuid, 'encryption': 'none', 'level': 0}
+              ]
+            }
+          ]
+        };
+        break;
+      case 'vmess':
+        outboundSettings = {
+          'vnext': [
+            {
+              'address': srv.address,
+              'port': srv.port,
+              'users': [
+                {'id': srv.uuid, 'alterId': 0, 'security': 'auto', 'level': 0}
+              ]
+            }
+          ]
+        };
+        break;
+      case 'trojan':
+        outboundSettings = {
+          'servers': [
+            {'address': srv.address, 'port': srv.port, 'password': srv.uuid, 'level': 0}
+          ]
+        };
+        break;
+      case 'shadowsocks':
+        outboundSettings = {
+          'servers': [
+            {'address': srv.address, 'port': srv.port, 'method': 'aes-128-gcm', 'password': srv.uuid}
+          ]
+        };
+        break;
+      default:
+        throw UnsupportedError('Protocole Xray non pris en charge : $protocol');
+    }
+
+    final Map<String, dynamic>? streamSettings;
+    switch (transport) {
+      case 'ws':
+        streamSettings = {
+          'network': 'ws',
+          'security': 'tls',
+          'tlsSettings': {'allowInsecure': false, 'serverName': srv.sni},
+          'wsSettings': {'path': srv.path, 'headers': {'Host': srv.address}}
+        };
+        break;
+      case 'grpc':
+        streamSettings = {
+          'network': 'grpc',
+          'security': 'tls',
+          'tlsSettings': {'allowInsecure': false, 'serverName': srv.sni},
+          'grpcSettings': {
+            'serviceName': srv.path.replaceFirst(RegExp(r'^/+'), ''),
+            'multiMode': false
+          }
+        };
+        break;
+      case 'httpupgrade':
+        streamSettings = {
+          'network': 'httpupgrade',
+          'security': 'tls',
+          'tlsSettings': {'allowInsecure': false, 'serverName': srv.sni},
+          'httpupgradeSettings': {'path': srv.path, 'host': srv.address}
+        };
+        break;
+      case 'xhttp':
+        streamSettings = {
+          'network': 'xhttp',
+          'security': 'tls',
+          'tlsSettings': {'allowInsecure': false, 'serverName': srv.sni},
+          'xhttpSettings': {'path': srv.path, 'mode': 'auto'}
+        };
+        break;
+      case 'raw':
+        streamSettings = {
+          'network': 'tcp',
+          'security': 'none',
+          'tcpSettings': {'header': {'type': 'none'}}
+        };
+        break;
+      case 'mkcp':
+        streamSettings = {
+          'network': 'kcp',
+          'security': 'none',
+          'kcpSettings': {
+            'mtu': 1350,
+            'tti': 50,
+            'uplinkCapacity': 5,
+            'downlinkCapacity': 20,
+            'congestion': false,
+            'readBufferSize': 2,
+            'writeBufferSize': 2
+          }
+        };
+        break;
+      case 'native':
+        // Native Shadowsocks carries TCP and UDP through its own encrypted protocol.
+        streamSettings = null;
+        break;
+      default:
+        throw UnsupportedError('Transport Xray non pris en charge : $transport');
+    }
+
+    final proxy = <String, dynamic>{
+      'tag': 'proxy',
+      'protocol': protocol,
+      'settings': outboundSettings,
+      if (streamSettings != null) 'streamSettings': streamSettings,
+      if (_isMuxEnabled && (protocol == 'vless' || protocol == 'vmess' || protocol == 'trojan'))
+        'mux': {'enabled': true, 'concurrency': 8},
+    };
+
     return {
-      "log": {"loglevel": "warning"},
-      "inbounds": [
+      'log': {'loglevel': 'warning'},
+      'inbounds': [
         {
-          "tag": "socks-in",
-          "port": 10808,
-          "listen": "127.0.0.1",
-          "protocol": "socks",
-          "settings": {"auth": "noauth", "udp": true}
+          'tag': 'socks-in',
+          'port': 10808,
+          'listen': '127.0.0.1',
+          'protocol': 'socks',
+          'settings': {'auth': 'noauth', 'udp': true}
         }
       ],
-      "outbounds": [
-        {
-          "tag": "proxy",
-          "protocol": "vless",
-          "settings": {
-            "vnext": [
-              {
-                "address": srv.address,
-                "port": srv.port,
-                "users": [
-                  {
-                    "id": srv.uuid,
-                    "encryption": "none",
-                    "level": 0
-                  }
-                ]
-              }
-            ]
-          },
-          "streamSettings": {
-            "network": "ws",
-            "security": "tls",
-            "tlsSettings": {
-              "allowInsecure": false,
-              "serverName": srv.sni
-            },
-            "wsSettings": {
-              "path": srv.path,
-              "headers": {"Host": srv.address}
-            }
-          }
-        },
-        {
-          "tag": "direct",
-          "protocol": "freedom",
-          "settings": {}
-        }
+      'outbounds': [
+        proxy,
+        {'tag': 'direct', 'protocol': 'freedom', 'settings': {}}
       ]
     };
   }
@@ -2441,7 +2555,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                   ],
                 ),
                 const SizedBox(height: 4),
-                const Text("En cas d'absence de token, configurez directement vos paramètres de connexion pour n'importe quel protocole et transport.", style: TextStyle(color: Colors.white60, fontSize: 10)),
+                const Text("Sans token, configurez un profil parmi VLESS, VMess, Trojan et Shadowsocks, avec un transport compatible.", style: TextStyle(color: Colors.white60, fontSize: 10)),
                 const SizedBox(height: 14),
 
                 const Text("PROTOCOLE RÉSEAU", style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold)),
@@ -2461,17 +2575,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
 
                 const Text("TRANSPORT STREAM", style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 6),
-                Row(
-                  children: [
-                    _buildTransportChip("ws", "WebSocket (ws)"),
-                    const SizedBox(width: 6),
-                    _buildTransportChip("grpc", "gRPC"),
-                    const SizedBox(width: 6),
-                    _buildTransportChip("xhttp", "HTTPUpgrade"),
-                    const SizedBox(width: 6),
-                    _buildTransportChip("tcp", "TCP Direct"),
-                  ],
-                ),
+                _buildTransportSelector(),
                 const SizedBox(height: 14),
 
                 Row(
@@ -2492,11 +2596,11 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                 Row(
                   children: [
                     Expanded(
-                      child: _buildFormField("Chemin WebSocket / xHTTP", _customPathCtrl, "/@abess237"),
+                      child: _buildFormField("Chemin du transport (si applicable)", _customPathCtrl, "/@abess237"),
                     ),
                     const SizedBox(width: 8),
                     Expanded(
-                      child: _buildFormField("SNI Bug Host (Zero-Rating)", _customSniCtrl, "crashlyticsreports-pa.googleapis.com"),
+                      child: _buildFormField("Nom SNI TLS (si utilisé)", _customSniCtrl, "vpn.example.com"),
                     ),
                   ],
                 ),
@@ -2797,15 +2901,66 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     );
   }
 
+  List<String> _transportOptionsFor(String protocol) {
+    const web = ['ws', 'grpc', 'httpupgrade', 'xhttp'];
+    switch (protocol.toLowerCase()) {
+      case 'vmess':
+        return [...web, 'raw', 'mkcp'];
+      case 'shadowsocks':
+        return [...web, 'raw', 'native'];
+      case 'vless':
+      case 'trojan':
+      default:
+        return web;
+    }
+  }
+
+  String _transportLabel(String transport) {
+    switch (transport) {
+      case 'ws': return 'WebSocket';
+      case 'grpc': return 'gRPC';
+      case 'httpupgrade': return 'HTTPUpgrade';
+      case 'xhttp': return 'XHTTP';
+      case 'raw': return 'RAW/TCP';
+      case 'mkcp': return 'mKCP/UDP';
+      case 'native': return 'TCP+UDP';
+      default: return transport.toUpperCase();
+    }
+  }
+
+  Widget _buildTransportSelector() {
+    final options = _transportOptionsFor(_customProtocol);
+    final chunkSize = options.length == 4 ? 2 : 3;
+    final rows = <Widget>[];
+    for (var start = 0; start < options.length; start += chunkSize) {
+      final end = start + chunkSize < options.length ? start + chunkSize : options.length;
+      final rowOptions = options.sublist(start, end);
+      rows.add(Row(
+        children: List<Widget>.generate(rowOptions.length * 2 - 1, (index) {
+          if (index.isOdd) return const SizedBox(width: 6);
+          final transport = rowOptions[index ~/ 2];
+          return _buildTransportChip(transport, _transportLabel(transport));
+        }),
+      ));
+      if (end < options.length) rows.add(const SizedBox(height: 6));
+    }
+    return Column(children: rows);
+  }
+
   Widget _buildProtocolChip(String id, String label) {
     final isSelected = _customProtocol == id;
     return Expanded(
       child: GestureDetector(
-        onTap: () => setState(() => _customProtocol = id),
+        onTap: () => setState(() {
+          _customProtocol = id;
+          if (!_transportOptionsFor(id).contains(_customTransport)) {
+            _customTransport = 'ws';
+          }
+        }),
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 8),
           decoration: BoxDecoration(
-            color: isSelected ? cyberCyan.withOpacity( 0.25) : const Color(0xFF030712),
+            color: isSelected ? cyberCyan.withOpacity(0.25) : const Color(0xFF030712),
             borderRadius: BorderRadius.circular(8),
             border: Border.all(color: isSelected ? cyberCyan : Colors.white12),
           ),
@@ -2832,13 +2987,14 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 8),
           decoration: BoxDecoration(
-            color: isSelected ? cyberGreen.withOpacity( 0.25) : const Color(0xFF030712),
+            color: isSelected ? cyberGreen.withOpacity(0.25) : const Color(0xFF030712),
             borderRadius: BorderRadius.circular(8),
             border: Border.all(color: isSelected ? cyberGreen : Colors.white12),
           ),
           child: Center(
             child: Text(
-              label.split(" ")[0],
+              label,
+              textAlign: TextAlign.center,
               style: TextStyle(
                 color: isSelected ? cyberGreen : Colors.white60,
                 fontSize: 10,
@@ -3031,6 +3187,8 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
               path: map['path'] ?? '/@abess237',
               sni: map['sni'] ?? 'crashlyticsreports-pa.googleapis.com',
               uuid: map['uuid'] ?? 'abe55237-0237-4237-8237-ab3552370237',
+              protocol: map['protocol']?.toString() ?? 'vless',
+              transport: map['transport']?.toString() ?? 'ws',
               bandwidthGb: (map['bandwidthGb'] as num?)?.toDouble() ?? 10.0,
               bandwidthUsedGb: (map['bandwidthUsedGb'] as num?)?.toDouble() ?? 0.0,
               expiresAt: DateTime.tryParse(map['expiresAt'] ?? '') ?? DateTime.now().add(const Duration(days: 30)),
@@ -3060,6 +3218,8 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
       'path': currentServer!.path,
       'sni': currentServer!.sni,
       'uuid': currentServer!.uuid,
+      'protocol': currentServer!.protocol,
+      'transport': currentServer!.transport,
       'bandwidthGb': currentServer!.bandwidthGb,
       'bandwidthUsedGb': currentServer!.bandwidthUsedGb,
       'expiresAt': currentServer!.expiresAt.toIso8601String(),
@@ -5026,7 +5186,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                   ],
                 ),
                 const SizedBox(height: 4),
-                const Text("En cas d'absence de token, configurez directement vos paramètres de connexion pour n'importe quel protocole et transport.", style: TextStyle(color: Colors.white60, fontSize: 10)),
+                const Text("Sans token, configurez un profil parmi VLESS, VMess, Trojan et Shadowsocks, avec un transport compatible.", style: TextStyle(color: Colors.white60, fontSize: 10)),
                 const SizedBox(height: 14),
 
                 const Text("PROTOCOLE RÉSEAU", style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold)),
@@ -5046,17 +5206,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
 
                 const Text("TRANSPORT STREAM", style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 6),
-                Row(
-                  children: [
-                    _buildTransportChip("ws", "WebSocket (ws)"),
-                    const SizedBox(width: 6),
-                    _buildTransportChip("grpc", "gRPC"),
-                    const SizedBox(width: 6),
-                    _buildTransportChip("xhttp", "HTTPUpgrade"),
-                    const SizedBox(width: 6),
-                    _buildTransportChip("tcp", "TCP Direct"),
-                  ],
-                ),
+                _buildTransportSelector(),
                 const SizedBox(height: 14),
 
                 Row(
@@ -5077,11 +5227,11 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                 Row(
                   children: [
                     Expanded(
-                      child: _buildFormField("Chemin WebSocket / xHTTP", _customPathCtrl, "/@abess237"),
+                      child: _buildFormField("Chemin du transport (si applicable)", _customPathCtrl, "/@abess237"),
                     ),
                     const SizedBox(width: 8),
                     Expanded(
-                      child: _buildFormField("SNI Bug Host (Zero-Rating)", _customSniCtrl, "crashlyticsreports-pa.googleapis.com"),
+                      child: _buildFormField("Nom SNI TLS (si utilisé)", _customSniCtrl, "vpn.example.com"),
                     ),
                   ],
                 ),
