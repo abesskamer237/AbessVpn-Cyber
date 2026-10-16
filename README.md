@@ -1,8 +1,8 @@
 # 🛡️ AbessVPN Cyber - Commercial Edition v2.5
 
-Une solution VPN professionnelle, commerciale et ultra-sécurisée complète comprenant :
-1. **L'Application Mobile Flutter Cyber Xray/VLESS** (`abess_vpn`) avec support multi-protocoles, gestion par Token, Kill Switch, Speed Test intégré, et injection SNI Host.
-2. **Le Serveur Maître & Panel Commercial** (`AbessVpn Server Panel`) gérant l'authentification VLESS/WebSocket, l'attribution des tokens, la télémesure en temps réel, le système de revendeurs avec crédits Go, et le contrôle anti-fraude d'appareils.
+Une solution VPN comprenant :
+1. **L'application Android Flutter/Xray** (`abess_vpn`) : gestion par token, import de profils VLESS/VMess/Trojan/Shadowsocks, Kill Switch, test de débit et reconnexion.
+2. **Le dépôt serveur dédié** (`AbessVpn-Server-Panel`) : API de licences, panneau d'administration, statistiques Xray, gestion des quotas et déploiement Docker/Caddy.
 
 ---
 
@@ -11,18 +11,17 @@ Une solution VPN professionnelle, commerciale et ultra-sécurisée complète com
 ```
 +--------------------------------------------------------+
 |             Application Mobile Flutter                 |
-|  - Moteur V2Ray/Xray (VLESS, VMess, Trojan, SS)        |
-|  - Speed Test Réel (Ping, Download, Upload)            |
-|  - Protection par Token & Lien Crypté (abess://)       |
+|  - VLESS, VMess, Trojan, Shadowsocks                    |
+|  - WS, gRPC, HTTPUpgrade, XHTTP, RAW/TCP, mKCP/UDP    |
+|  - Licence par token et lien chiffré abess://           |
 +---------------------------+----------------------------+
-                            | (HTTP REST API / WebSocket)
+                            | HTTPS / API REST
                             v
 +--------------------------------------------------------+
-|           AbessVPN Server Panel & Core API             |
-|  - Port: 3000 (Express + TypeScript + WS /@abess237)   |
-|  - Super Admin: rigomanga4@gmail.com                   |
-|  - Gestion des Revendeurs & Crédits Go                 |
-|  - Anti-Fraude Appareil (Essai 1 Go / 24h)            |
+|           Dépôt AbessVpn-Server-Panel                   |
+|  - API + React Admin + stockage persistant Docker      |
+|  - Xray-core + Caddy + Docker Compose                  |
+|  - Expiration, quota, appareils et compteurs réels     |
 +--------------------------------------------------------+
 ```
 
@@ -31,11 +30,15 @@ Une solution VPN professionnelle, commerciale et ultra-sécurisée complète com
 ## 📱 Application Mobile Flutter (`abess_vpn`)
 
 ### Fonctionnalités
-- **Moteur VPN Xray/VLESS** : Support natif VLESS + WebSocket + TLS 1.3 avec injection SNI Host (zero-rating).
-- **Mode Multi-Protocoles Autonome** : Mode de secours "Zero-Token" permettant de configurer manuellement n'importe quel serveur (VLESS, VMess, Trojan, Shadowsocks) avec transports (WS, gRPC, xHTTP, TCP).
+- **Protocoles d'accès** : VLESS, VMess, Trojan et Shadowsocks (AEAD).
+- **Transports TLS/TCP** : WebSocket, gRPC, HTTPUpgrade et XHTTP sur le port HTTPS du serveur.
+- **TCP et UDP natifs supplémentaires** : VMess RAW/TCP sur le port 10060 et VMess mKCP/UDP sur le port 10061 ; Shadowsocks natif TCP + UDP sur le port 10050. Ouvre ces ports dans le pare-feu du VPS si ces modes sont activés.
+- **Import de profils** : liens `vless://`, `vmess://`, `trojan://` et `ss://`. Les profils Reality et les liens Shadowsocks qui requièrent un plugin externe ne sont pas convertis automatiquement.
+- **Multiplexage** : MUX/XUDP disponible selon le transport ; désactivé pour gRPC et mKCP.
 - **Speed Test Cyber Intégré** : Mesure en temps réel de la latence Ping, du débit montant (Upload) et descendant (Download).
-- **Gestion des Quotas & Licences** : Affichage dynamique de la consommation en Go et de la durée restante avant expiration.
-- **Sécurité & Stabilité** : Kill Switch anti-fuite de données, Multiplexage TCP (Mux) et Reconnexion Automatique.
+- **Gestion des quotas & licences** : Affichage de la consommation comptabilisée par Xray et de l'expiration de la licence.
+- **Sécurité & stabilité** : Kill Switch, MUX lorsque compatible et reconnexion automatique.
+- **Limite de compatibilité** : Hysteria, WireGuard et TUN ne sont pas présentés comme options actives dans cette version : ils nécessitent une configuration/gestion de clés et une intégration client dédiées.
 - **Support Client WhatsApp Direct** : Boutons d'assistance directe vers WhatsApp (+237 695 14 04 19) et lien vers la communauté officielle.
 
 ### Compilation et Build Flutter
@@ -64,14 +67,14 @@ flutter build apk --release
 ## 🖥️ Serveur Maître & Panel Commercial (`server.ts`)
 
 ### Identifiants Administrateur
-- **Super Admin Email** : `rigomanga4@gmail.com`
-- **Mot de passe par défaut** : `abess237`
+
+N'utilise pas de compte ou mot de passe d'exemple en production. Pour le déploiement du dépôt serveur dédié, renseigne `ADMIN_EMAIL` et `ADMIN_INITIAL_PASSWORD` dans les secrets GitHub Actions ; le mot de passe initial doit comporter au moins 16 caractères. Le secret `MASTER_SECRET` doit rester stable après la création des liens chiffrés `abess://`. Ne place aucun mot de passe dans ce README, dans le code ou dans un commit.
 
 ### Modèle Commercial & Revendeurs
 - **Super Administrateur** : Contrôle total du serveur, gestion des revendeurs, recharge de leurs crédits en Gigas (Go), visualisation de la consommation globale du réseau.
 - **Revendeurs** : Peuvent créer et vendre des tokens clients. Chaque création de token déduit automatiquement le quota équivalent de leur solde de crédits Go. Les revendeurs ne voient **jamais** l'adresse IP ni l'infrastructure maîtresse du serveur.
 - **Tokens Clients** : Définissent la limite de données (ex: 10 Go, 50 Go, 100 Go), la durée de validité (ex: 30 jours) et le nombre maximum d'appareils autorisés simultanément.
-- **Essai Gratuit Anti-Fraude** : Distribution automatique d'un pass découverte de 1 Go / 24h verrouillé par l'empreinte matérielle de l'appareil (`deviceId`).
+- **Essai gratuit** : la route de test gratuit du dépôt serveur dédié reste désactivée tant que le contrôle anti-fraude n'est pas complètement activé ; l'application ne doit pas afficher un essai fonctionnel lorsqu'il ne l'est pas.
 
 ---
 
