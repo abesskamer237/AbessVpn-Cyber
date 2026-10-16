@@ -1217,7 +1217,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     final protocol = srv.protocol.toLowerCase();
     final transport = srv.transport.toLowerCase();
     const supportedProtocols = {'vless', 'vmess', 'trojan', 'shadowsocks'};
-    const supportedTransports = {'ws', 'grpc', 'httpupgrade', 'xhttp', 'raw', 'kcp', 'native'};
+    const supportedTransports = {'ws', 'grpc', 'httpupgrade', 'xhttp', 'raw', 'tcp', 'kcp', 'mkcp', 'native'};
 
     if (!supportedProtocols.contains(protocol) || !supportedTransports.contains(transport)) {
       throw UnsupportedError(
@@ -1230,7 +1230,8 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     if (protocol == 'shadowsocks' && transport != 'native') {
       throw UnsupportedError('Pour avoir TCP et UDP avec Shadowsocks, sélectionne le transport natif sur le port 10050.');
     }
-    if ((transport == 'raw' || transport == 'kcp') && protocol != 'vmess' && srv.token != 'RAW-LINK-IMPORT') {
+    final effectiveTransport = transport == 'tcp' ? 'raw' : (transport == 'mkcp' ? 'kcp' : transport);
+    if ((effectiveTransport == 'raw' || effectiveTransport == 'kcp') && protocol != 'vmess' && srv.token != 'RAW-LINK-IMPORT') {
       throw UnsupportedError('RAW/TCP et mKCP/UDP sont réservés à VMess sur le serveur ABESS.');
     }
     if (protocol == 'trojan' && !srv.tls) {
