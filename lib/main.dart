@@ -220,6 +220,8 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
       uuid: uuid,
       protocol: _customProtocol,
       transport: _customTransport,
+      tls: !{'native', 'raw', 'kcp'}.contains(_customTransport),
+      wsHost: host,
       bandwidthGb: 999.0,
       bandwidthUsedGb: 0.0,
       expiresAt: DateTime.now().add(const Duration(days: 365)),
