@@ -1089,6 +1089,12 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
   }
 
   Map<String, dynamic> _buildV2RayVlessConfig(ImportedVpnServer srv) {
+    if (srv.protocol.toLowerCase() != 'vless' || srv.transport.toLowerCase() != 'ws') {
+      throw UnsupportedError(
+        'Configuration non prise en charge par ce client : ${srv.protocol.toUpperCase()} + ${srv.transport.toUpperCase()}. '
+        'Cette version attend VLESS + WebSocket + TLS.',
+      );
+    }
     return {
       "log": {"loglevel": "warning"},
       "inbounds": [
@@ -1173,6 +1179,8 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
               path: srvConf['path'] ?? '/@abess237',
               sni: srvConf['sni'] ?? 'crashlyticsreports-pa.googleapis.com',
               uuid: srvConf['uuid'] ?? 'abe55237-0237-4237-8237-ab3552370237',
+              protocol: (srvConf['protocol'] as String?) ?? 'vless',
+              transport: (srvConf['transport'] as String?) ?? 'ws',
               bandwidthGb: (data['bandwidthGb'] as num?)?.toDouble() ?? 10.0,
               bandwidthUsedGb: (data['bandwidthUsedGb'] as num?)?.toDouble() ?? 0.0,
               expiresAt: DateTime.tryParse(data['expiresAt'] ?? '') ?? DateTime.now().add(const Duration(days: 30)),
