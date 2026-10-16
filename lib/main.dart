@@ -184,6 +184,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
   String _customProtocol = "vless";
   String _customTransport = "ws";
   final TextEditingController _customHostCtrl = TextEditingController();
+  final TextEditingController _customWsHostCtrl = TextEditingController();
   final TextEditingController _customPortCtrl = TextEditingController(text: "443");
   final TextEditingController _customPathCtrl = TextEditingController(text: "/@abess237");
   final TextEditingController _customUuidCtrl = TextEditingController();
@@ -224,7 +225,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
       protocol: _customProtocol,
       transport: _customTransport,
       tls: !{'native', 'raw', 'tcp', 'kcp', 'mkcp'}.contains(_customTransport),
-      wsHost: host,
+      wsHost: _customWsHostCtrl.text.trim(),
       bandwidthGb: 999.0,
       bandwidthUsedGb: 0.0,
       expiresAt: DateTime.now().add(const Duration(days: 365)),
@@ -433,6 +434,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     _createTokenCodeCtrl.dispose();
     _createPlanNameCtrl.dispose();
     _customHostCtrl.dispose();
+    _customWsHostCtrl.dispose();
     _customPortCtrl.dispose();
     _customPathCtrl.dispose();
     _customUuidCtrl.dispose();
@@ -1312,7 +1314,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
             'network': 'ws',
             'wsSettings': {
               'path': srv.path,
-              'headers': {'Host': srv.wsHost.isNotEmpty ? srv.wsHost : srv.address}
+              'host': srv.wsHost.trim().isNotEmpty ? srv.wsHost.trim() : srv.address
             }
           };
           break;
@@ -1320,6 +1322,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
           transportSettings = {
             'network': 'grpc',
             'grpcSettings': {
+              'authority': srv.wsHost.trim().isNotEmpty ? srv.wsHost.trim() : srv.address,
               'serviceName': srv.path.replaceFirst(RegExp(r'^/+'), ''),
               'multiMode': false
             }
@@ -1328,13 +1331,20 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
         case 'httpupgrade':
           transportSettings = {
             'network': 'httpupgrade',
-            'httpupgradeSettings': {'path': srv.path, 'host': srv.address}
+            'httpupgradeSettings': {
+              'path': srv.path,
+              'host': srv.wsHost.trim().isNotEmpty ? srv.wsHost.trim() : srv.address
+            }
           };
           break;
         case 'xhttp':
           transportSettings = {
             'network': 'xhttp',
-            'xhttpSettings': {'path': srv.path, 'mode': 'auto'}
+            'xhttpSettings': {
+              'host': srv.wsHost.trim().isNotEmpty ? srv.wsHost.trim() : srv.address,
+              'path': srv.path,
+              'mode': 'auto'
+            }
           };
           break;
         case 'raw':
@@ -1578,7 +1588,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
             transport: srvConf['transport']?.toString() ?? 'ws',
             tls: (srvConf['security']?.toString().toLowerCase() ?? 'tls') != 'none',
             method: srvConf['method']?.toString() ?? 'aes-128-gcm',
-            wsHost: srvConf['host']?.toString() ?? '',
+            wsHost: srvConf['wsHost']?.toString() ?? srvConf['address']?.toString() ?? '',
             bandwidthGb: (data['bandwidthGb'] as num?)?.toDouble() ?? 0.0,
             bandwidthUsedGb: (data['bandwidthUsedGb'] as num?)?.toDouble() ?? 0.0,
             expiresAt: DateTime.tryParse(data['expiresAt']?.toString() ?? '')
@@ -2781,14 +2791,21 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                 Row(
                   children: [
                     Expanded(
-                      child: _buildFormField("Chemin WebSocket / xHTTP", _customPathCtrl, "/@abess237"),
+                      child: _buildFormField("Host HTTP (en-tête Host / authority)", _customWsHostCtrl, "vpn.ton-domaine.com"),
                     ),
                     const SizedBox(width: 8),
                     Expanded(
-                      child: _buildFormField("SNI TLS (domaine couvert par le certificat)", _customSniCtrl, "vpn.ton-domaine.com"),
+                      child: _buildFormField("SNI TLS (domaine du certificat)", _customSniCtrl, "vpn.ton-domaine.com"),
                     ),
                   ],
                 ),
+                const SizedBox(height: 4),
+                const Text(
+                  "Adresse serveur = domaine/IP de connexion. Host HTTP et SNI sont séparés : pour Caddy, le Host HTTP et le SNI doivent correspondre au domaine configuré. Laisse Host vide pour reprendre l’adresse serveur.",
+                  style: TextStyle(color: Colors.white38, fontSize: 9),
+                ),
+                const SizedBox(height: 10),
+                _buildFormField("Chemin WebSocket / XHTTP / service", _customPathCtrl, "/@abess237"),
                 const SizedBox(height: 10),
 
                 Column(
