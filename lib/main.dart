@@ -1274,6 +1274,51 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
           }),
         ).timeout(const Duration(seconds: 5));
 
+        if (res.statusCode == 403) {
+          final data = jsonDecode(res.body);
+          final message = data['error']?.toString()
+              ?? 'La création de tokens est réservée au panneau administrateur.';
+          setModalState(() => _isCreatingToken = false);
+          if (!mounted) return;
+          Navigator.pop(context);
+          showDialog(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              backgroundColor: cyberCardBg,
+              title: const Row(
+                children: [
+                  Icon(Icons.admin_panel_settings, color: cyberYellow),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'CRÉATION VIA LE PANEL',
+                      style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
+              ),
+              content: Text(message, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('FERMER', style: TextStyle(color: Colors.white60)),
+                ),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    _openUrlSafe(base);
+                  },
+                  icon: const Icon(Icons.open_in_new, size: 14, color: Colors.black),
+                  label: const Text('OUVRIR LE PANEL', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 11)),
+                  style: ElevatedButton.styleFrom(backgroundColor: cyberGreen),
+                ),
+              ],
+            ),
+          );
+          success = true;
+          break;
+        }
+
         if (res.statusCode == 200) {
           final data = jsonDecode(res.body);
           if (data['ok'] == true) {
