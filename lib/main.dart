@@ -220,7 +220,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
       uuid: uuid,
       protocol: _customProtocol,
       transport: _customTransport,
-      tls: !{'native', 'raw', 'kcp'}.contains(_customTransport),
+      tls: !{'native', 'raw', 'tcp', 'kcp', 'mkcp'}.contains(_customTransport),
       wsHost: host,
       bandwidthGb: 999.0,
       bandwidthUsedGb: 0.0,
@@ -1299,7 +1299,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
       streamSettings = null;
     } else {
       final Map<String, dynamic> transportSettings;
-      switch (transport) {
+      switch (effectiveTransport) {
         case 'ws':
           transportSettings = {
             'network': 'ws',
@@ -1373,7 +1373,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     if (streamSettings != null) {
       proxyOutbound['streamSettings'] = streamSettings;
     }
-    if (_isMuxEnabled && !{'native', 'grpc', 'kcp'}.contains(transport)) {
+    if (_isMuxEnabled && !{'native', 'grpc', 'kcp'}.contains(effectiveTransport)) {
       // XUDP transporte les paquets UDP dans le tunnel quand le protocole le permet.
       // Xray recommande de ne pas activer MUX pour gRPC/HTTP2; mKCP possède déjà son transport UDP.
       proxyOutbound['mux'] = {
