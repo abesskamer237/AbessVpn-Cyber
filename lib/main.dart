@@ -3006,18 +3006,37 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                 ],
                 const SizedBox(height: 14),
 
-                Row(
-                  children: [
-                    Expanded(
-                      flex: 2,
-                      child: _buildFormField("Hôte / domaine / IP du serveur", _customHostCtrl, "vpn.ton-domaine.com"),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      flex: 1,
-                      child: _buildFormField("Port", _customPortCtrl, "443"),
-                    ),
-                  ],
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: cyberGreen.withOpacity(0.06),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: cyberGreen.withOpacity(0.55)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        "ADRESSE DE DESTINATION — DOMAINE/IP + PORT",
+                        style: TextStyle(color: cyberGreen, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.7),
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            flex: 2,
+                            child: _buildFormField("Domaine/IP de destination", _customHostCtrl, "vpn.ton-domaine.com"),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            flex: 1,
+                            child: _buildFormField("Port", _customPortCtrl, "443"),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 10),
 
