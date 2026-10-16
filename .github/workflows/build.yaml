@@ -80,17 +80,16 @@ jobs:
           VPN_DOMAIN: ${{ vars.VPN_DOMAIN }}
         run: |
           set -euo pipefail
-          if [ -n "${VPN_DOMAIN:-}" ]; then
-            if ! [[ "$VPN_DOMAIN" =~ ^[A-Za-z0-9.-]+$ ]]; then
-              echo "VPN_DOMAIN must be a hostname only (no scheme, port, or path)." >&2
-              exit 1
-            fi
-            flutter build apk --release --no-tree-shake-icons \
-              --dart-define="ABESS_API_BASE_URL=https://$VPN_DOMAIN"
-          else
-            echo "VPN_DOMAIN is not configured in this repository; building with legacy fallback API URLs." >&2
-            flutter build apk --release --no-tree-shake-icons
+          if [ -z "${VPN_DOMAIN:-}" ]; then
+            echo "Set the repository variable VPN_DOMAIN before building: it is the API domain embedded in this APK." >&2
+            exit 1
           fi
+          if ! [[ "$VPN_DOMAIN" =~ ^[A-Za-z0-9.-]+$ ]]; then
+            echo "VPN_DOMAIN must be a hostname only (no scheme, port, or path)." >&2
+            exit 1
+          fi
+          flutter build apk --release --no-tree-shake-icons \
+            --dart-define="ABESS_API_BASE_URL=https://$VPN_DOMAIN"
 
       - uses: actions/upload-artifact@v4
         with:
