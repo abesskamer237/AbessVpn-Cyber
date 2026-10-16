@@ -807,7 +807,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                         Expanded(
                           child: Container(
                             padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(12), border: Border.all(color: cyberYellow.withValues(alpha: 0.4))),
+                            decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(12), border: Border.all(color: cyberYellow.withOpacity( 0.4))),
                             child: Column(
                               children: [
                                 const Text('LATENCE PING', style: TextStyle(color: cyberYellow, fontSize: 9, fontWeight: FontWeight.bold)),
@@ -821,7 +821,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                         Expanded(
                           child: Container(
                             padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(12), border: Border.all(color: cyberCyan.withValues(alpha: 0.4))),
+                            decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(12), border: Border.all(color: cyberCyan.withOpacity( 0.4))),
                             child: Column(
                               children: [
                                 const Text('DOWNLOAD', style: TextStyle(color: cyberCyan, fontSize: 9, fontWeight: FontWeight.bold)),
@@ -836,7 +836,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                         Expanded(
                           child: Container(
                             padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(12), border: Border.all(color: cyberGreen.withValues(alpha: 0.4))),
+                            decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(12), border: Border.all(color: cyberGreen.withOpacity( 0.4))),
                             child: Column(
                               children: [
                                 const Text('UPLOAD', style: TextStyle(color: cyberGreen, fontSize: 9, fontWeight: FontWeight.bold)),
@@ -854,9 +854,9 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: cyberGreen.withValues(alpha: 0.1),
+                          color: cyberGreen.withOpacity( 0.1),
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: cyberGreen.withValues(alpha: 0.4)),
+                          border: Border.all(color: cyberGreen.withOpacity( 0.4)),
                         ),
                         child: Row(
                           children: [
@@ -1607,9 +1607,9 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
             Container(
               padding: const EdgeInsets.all(6),
               decoration: BoxDecoration(
-                color: cyberGreen.withValues(alpha: 0.15),
+                color: cyberGreen.withOpacity( 0.15),
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: cyberGreen.withValues(alpha: 0.4)),
+                border: Border.all(color: cyberGreen.withOpacity( 0.4)),
               ),
               child: const Icon(Icons.shield, color: cyberGreen, size: 20),
             ),
@@ -1650,7 +1650,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           color: cyberCardBg,
-          border: Border(top: BorderSide(color: cyberCyan.withValues(alpha: 0.25))),
+          border: Border(top: BorderSide(color: cyberCyan.withOpacity( 0.25))),
         ),
         child: BottomNavigationBar(
           currentIndex: _currentNavIndex,
@@ -1698,7 +1698,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
               decoration: BoxDecoration(
                 color: cyberCardBg,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: cyberCyan.withValues(alpha: 0.4)),
+                border: Border.all(color: cyberCyan.withOpacity( 0.4)),
               ),
               child: Row(
                 children: [
@@ -1736,7 +1736,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
               decoration: BoxDecoration(
                 color: cyberCardBg,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: cyberGreen.withValues(alpha: 0.35)),
+                border: Border.all(color: cyberGreen.withOpacity( 0.35)),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1786,7 +1786,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
               margin: const EdgeInsets.only(bottom: 14),
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: (srv.isExpired || srv.isQuotaExceeded) ? cyberRed.withValues(alpha: 0.12) : cyberYellow.withValues(alpha: 0.12),
+                color: (srv.isExpired || srv.isQuotaExceeded) ? cyberRed.withOpacity( 0.12) : cyberYellow.withOpacity( 0.12),
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: (srv.isExpired || srv.isQuotaExceeded) ? cyberRed : cyberYellow),
               ),
@@ -1847,7 +1847,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                     boxShadow: [
                       if (isConnected)
                         BoxShadow(
-                          color: cyberGreen.withValues(alpha: 0.3 + pulseVal * 0.3),
+                          color: cyberGreen.withOpacity( 0.3 + pulseVal * 0.3),
                           blurRadius: 30,
                           spreadRadius: 4,
                         ),
@@ -1911,7 +1911,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
               decoration: BoxDecoration(
                 color: cyberCardBg,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: cyberGreen.withValues(alpha: 0.25)),
+                border: Border.all(color: cyberGreen.withOpacity( 0.25)),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -2102,7 +2102,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                           barWidth: 2,
                           isStrokeCapRound: true,
                           dotData: const FlDotData(show: false),
-                          belowBarData: BarAreaData(show: true, color: cyberCyan.withValues(alpha: 0.12)),
+                          belowBarData: BarAreaData(show: true, color: cyberCyan.withOpacity( 0.12)),
                         ),
                         LineChartBarData(
                           spots: _speedHistoryUpload,
@@ -2111,7 +2111,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                           barWidth: 2,
                           isStrokeCapRound: true,
                           dotData: const FlDotData(show: false),
-                          belowBarData: BarAreaData(show: true, color: cyberGreen.withValues(alpha: 0.08)),
+                          belowBarData: BarAreaData(show: true, color: cyberGreen.withOpacity( 0.08)),
                         ),
                       ],
                     ),
@@ -2140,7 +2140,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
             decoration: BoxDecoration(
               color: cyberCardBg,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: cyberGreen.withValues(alpha: 0.35)),
+              border: Border.all(color: cyberGreen.withOpacity( 0.35)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -2167,7 +2167,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                           filled: true,
                           fillColor: const Color(0xFF030712),
                           contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: cyberGreen.withValues(alpha: 0.4))),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: cyberGreen.withOpacity( 0.4))),
                           enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Colors.white24)),
                           focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: cyberGreen)),
                         ),
@@ -2212,7 +2212,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
             decoration: BoxDecoration(
               color: cyberCardBg,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: cyberCyan.withValues(alpha: 0.4)),
+              border: Border.all(color: cyberCyan.withOpacity( 0.4)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -2229,7 +2229,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                     ),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                      decoration: BoxDecoration(color: cyberCyan.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(8)),
+                      decoration: BoxDecoration(color: cyberCyan.withOpacity( 0.2), borderRadius: BorderRadius.circular(8)),
                       child: const Text("AUTONOME", style: TextStyle(color: cyberCyan, fontSize: 9, fontWeight: FontWeight.bold)),
                     ),
                   ],
@@ -2410,7 +2410,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
             decoration: BoxDecoration(
               color: cyberCardBg,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: cyberCyan.withValues(alpha: 0.35)),
+              border: Border.all(color: cyberCyan.withOpacity( 0.35)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -2547,7 +2547,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
             decoration: BoxDecoration(
               color: cyberCardBg,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: cyberGreen.withValues(alpha: 0.4)),
+              border: Border.all(color: cyberGreen.withOpacity( 0.4)),
             ),
             child: Column(
               children: [
@@ -2599,7 +2599,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 8),
           decoration: BoxDecoration(
-            color: isSelected ? cyberCyan.withValues(alpha: 0.25) : const Color(0xFF030712),
+            color: isSelected ? cyberCyan.withOpacity( 0.25) : const Color(0xFF030712),
             borderRadius: BorderRadius.circular(8),
             border: Border.all(color: isSelected ? cyberCyan : Colors.white12),
           ),
@@ -2626,7 +2626,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 8),
           decoration: BoxDecoration(
-            color: isSelected ? cyberGreen.withValues(alpha: 0.25) : const Color(0xFF030712),
+            color: isSelected ? cyberGreen.withOpacity( 0.25) : const Color(0xFF030712),
             borderRadius: BorderRadius.circular(8),
             border: Border.all(color: isSelected ? cyberGreen : Colors.white12),
           ),
