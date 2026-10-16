@@ -1109,7 +1109,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     };
     if (!supported) {
       throw UnsupportedError(
-        'Profil non pris en charge : \${protocol.toUpperCase()} + \${transport.toUpperCase()}.',
+        'Profil non pris en charge : ${protocol.toUpperCase()} + ${transport.toUpperCase()}.',
       );
     }
     final Map<String, dynamic> outboundSettings;
