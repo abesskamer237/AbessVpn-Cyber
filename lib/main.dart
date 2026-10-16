@@ -199,7 +199,10 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
       _showToast("Veuillez indiquer un hôte ou une IP");
       return;
     }
-    final port = int.tryParse(_customPortCtrl.text.trim()) ?? 443;
+    final enteredPort = int.tryParse(_customPortCtrl.text.trim()) ?? 443;
+    final port = _customProtocol == 'shadowsocks' && _customTransport == 'native' && enteredPort == 443
+        ? 10050
+        : enteredPort;
     final uuid = _customUuidCtrl.text.trim().isEmpty ? "abe55237-0237-4237-8237-ab3552370237" : _customUuidCtrl.text.trim();
     final path = _customPathCtrl.text.trim().isEmpty ? "/@abess237" : _customPathCtrl.text.trim();
     final sni = _customSniCtrl.text.trim().isEmpty ? host : _customSniCtrl.text.trim();
@@ -264,7 +267,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
         _showToast("Lien $proto importé avec succès !");
       } else if (link.startsWith("vmess://") || link.startsWith("trojan://") || link.startsWith("ss://")) {
         _addLog('IMPORT REFUSÉ : PROTOCOLE NON PRIS EN CHARGE PAR CETTE VERSION');
-        _showToast('Cette version prend en charge VLESS uniquement, avec WebSocket + TLS.');
+        _showToast('Les profils compatibles sont VLESS, VMess, Trojan et Shadowsocks, selon le transport configuré.');
       } else {
         _showToast("Format de lien non reconnu");
       }
@@ -1092,60 +1095,151 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
   }
 
   Map<String, dynamic> _buildV2RayVlessConfig(ImportedVpnServer srv) {
-    if (srv.protocol.toLowerCase() != 'vless' || srv.transport.toLowerCase() != 'ws') {
+    // Mirror the server panel's supported matrix. HTTP-based transports use
+    // TLS on port 443; native TCP/UDP is intentionally only for Shadowsocks.
+    final protocol = srv.protocol.toLowerCase();
+    final transport = srv.transport.toLowerCase();
+    const supportedProtocols = {'vless', 'vmess', 'trojan', 'shadowsocks'};
+    const supportedTransports = {'ws', 'grpc', 'httpupgrade', 'xhttp', 'native'};
+
+    if (!supportedProtocols.contains(protocol) || !supportedTransports.contains(transport)) {
       throw UnsupportedError(
-        'Configuration non prise en charge par ce client : ${srv.protocol.toUpperCase()} + ${srv.transport.toUpperCase()}. '
-        'Cette version attend VLESS + WebSocket + TLS.',
+        'Configuration non prise en charge : ${protocol.toUpperCase()} + ${transport.toUpperCase()}.',
       );
     }
+    if (transport == 'native' && protocol != 'shadowsocks') {
+      throw UnsupportedError('Le mode TCP + UDP natif est disponible uniquement avec Shadowsocks.');
+    }
+
+    final Map<String, dynamic> outboundSettings;
+    switch (protocol) {
+      case 'vless':
+        outboundSettings = {
+          'vnext': [
+            {
+              'address': srv.address,
+              'port': srv.port,
+              'users': [
+                {'id': srv.uuid, 'encryption': 'none', 'level': 0}
+              ]
+            }
+          ]
+        };
+        break;
+      case 'vmess':
+        outboundSettings = {
+          'vnext': [
+            {
+              'address': srv.address,
+              'port': srv.port,
+              'users': [
+                {'id': srv.uuid, 'alterId': 0, 'security': 'auto', 'level': 0}
+              ]
+            }
+          ]
+        };
+        break;
+      case 'trojan':
+        outboundSettings = {
+          'servers': [
+            {
+              'address': srv.address,
+              'port': srv.port,
+              'password': srv.uuid,
+              'level': 0
+            }
+          ]
+        };
+        break;
+      case 'shadowsocks':
+        outboundSettings = {
+          'servers': [
+            {
+              'address': srv.address,
+              'port': srv.port,
+              'method': 'aes-128-gcm',
+              'password': srv.uuid
+            }
+          ]
+        };
+        break;
+      default:
+        throw UnsupportedError('Protocole non pris en charge.');
+    }
+
+    final Map<String, dynamic>? streamSettings;
+    if (transport == 'native') {
+      streamSettings = null;
+    } else {
+      final Map<String, dynamic> transportSettings;
+      switch (transport) {
+        case 'ws':
+          transportSettings = {
+            'network': 'ws',
+            'wsSettings': {
+              'path': srv.path,
+              'headers': {'Host': srv.address}
+            }
+          };
+          break;
+        case 'grpc':
+          transportSettings = {
+            'network': 'grpc',
+            'grpcSettings': {
+              'serviceName': srv.path.replaceFirst(RegExp(r'^/+'), ''),
+              'multiMode': false
+            }
+          };
+          break;
+        case 'httpupgrade':
+          transportSettings = {
+            'network': 'httpupgrade',
+            'httpupgradeSettings': {'path': srv.path, 'host': srv.address}
+          };
+          break;
+        case 'xhttp':
+          transportSettings = {
+            'network': 'xhttp',
+            'xhttpSettings': {'path': srv.path, 'mode': 'auto'}
+          };
+          break;
+        default:
+          throw UnsupportedError('Transport non pris en charge.');
+      }
+
+      streamSettings = {
+        ...transportSettings,
+        'security': 'tls',
+        'tlsSettings': {
+          'allowInsecure': false,
+          'serverName': srv.sni.isNotEmpty ? srv.sni : srv.address
+        }
+      };
+    }
+
+    final Map<String, dynamic> proxyOutbound = {
+      'tag': 'proxy',
+      'protocol': protocol,
+      'settings': outboundSettings
+    };
+    if (streamSettings != null) {
+      proxyOutbound['streamSettings'] = streamSettings;
+    }
+
     return {
-      "log": {"loglevel": "warning"},
-      "inbounds": [
+      'log': {'loglevel': 'warning'},
+      'inbounds': [
         {
-          "tag": "socks-in",
-          "port": 10808,
-          "listen": "127.0.0.1",
-          "protocol": "socks",
-          "settings": {"auth": "noauth", "udp": true}
+          'tag': 'socks-in',
+          'port': 10808,
+          'listen': '127.0.0.1',
+          'protocol': 'socks',
+          'settings': {'auth': 'noauth', 'udp': true}
         }
       ],
-      "outbounds": [
-        {
-          "tag": "proxy",
-          "protocol": "vless",
-          "settings": {
-            "vnext": [
-              {
-                "address": srv.address,
-                "port": srv.port,
-                "users": [
-                  {
-                    "id": srv.uuid,
-                    "encryption": "none",
-                    "level": 0
-                  }
-                ]
-              }
-            ]
-          },
-          "streamSettings": {
-            "network": "ws",
-            "security": "tls",
-            "tlsSettings": {
-              "allowInsecure": false,
-              "serverName": srv.sni
-            },
-            "wsSettings": {
-              "path": srv.path,
-              "headers": {"Host": srv.address}
-            }
-          }
-        },
-        {
-          "tag": "direct",
-          "protocol": "freedom",
-          "settings": {}
-        }
+      'outbounds': [
+        proxyOutbound,
+        {'tag': 'direct', 'protocol': 'freedom', 'settings': {}}
       ]
     };
   }
@@ -2463,15 +2557,26 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                 const SizedBox(height: 6),
                 Row(
                   children: [
-                    _buildTransportChip("ws", "WebSocket (ws)"),
+                    _buildTransportChip("ws", "WebSocket"),
                     const SizedBox(width: 6),
                     _buildTransportChip("grpc", "gRPC"),
                     const SizedBox(width: 6),
-                    _buildTransportChip("xhttp", "HTTPUpgrade"),
+                    _buildTransportChip("httpupgrade", "HTTPUpgrade"),
                     const SizedBox(width: 6),
-                    _buildTransportChip("tcp", "TCP Direct"),
+                    _buildTransportChip("xhttp", "XHTTP"),
                   ],
                 ),
+                if (_customProtocol == "shadowsocks") ...[
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      _buildTransportChip("native", "TCP + UDP natifs"),
+                      const Expanded(child: SizedBox()),
+                      const Expanded(child: SizedBox()),
+                      const Expanded(child: SizedBox()),
+                    ],
+                  ),
+                ],
                 const SizedBox(height: 14),
 
                 Row(
@@ -2801,7 +2906,12 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     final isSelected = _customProtocol == id;
     return Expanded(
       child: GestureDetector(
-        onTap: () => setState(() => _customProtocol = id),
+        onTap: () => setState(() {
+          _customProtocol = id;
+          if (id != 'shadowsocks' && _customTransport == 'native') {
+            _customTransport = 'ws';
+          }
+        }),
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 8),
           decoration: BoxDecoration(
