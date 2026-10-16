@@ -233,7 +233,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     final link = raw.trim();
     if (link.isEmpty) return;
     try {
-      if (link.startsWith("vless://") || link.startsWith("vmess://") || link.startsWith("trojan://") || link.startsWith("ss://")) {
+      if (link.startsWith("vless://")) {
         final uri = Uri.parse(link.replaceAll("#", "?tag="));
         final proto = uri.scheme;
         final host = uri.host;
@@ -262,6 +262,9 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
         });
         _saveCurrentServer();
         _showToast("Lien $proto importé avec succès !");
+      } else if (link.startsWith("vmess://") || link.startsWith("trojan://") || link.startsWith("ss://")) {
+        _addLog('IMPORT REFUSÉ : PROTOCOLE NON PRIS EN CHARGE PAR CETTE VERSION');
+        _showToast('Cette version prend en charge VLESS uniquement, avec WebSocket + TLS.');
       } else {
         _showToast("Format de lien non reconnu");
       }
