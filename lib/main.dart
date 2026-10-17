@@ -154,18 +154,18 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
   static const Color cyberCyan = Color(0xFF06B6D4);
   static const Color cyberRed = Color(0xFFEF4444);
   static const Color cyberYellow = Color(0xFFF59E0B);
-  Color get cyberCardBg => abessDarkMode.value ? Color(0xFF080F1E) : Color(0xFFFFFFFF);
-  Color get _fieldBackgroundColor => abessDarkMode.value ? _fieldBackgroundColor : Color(0xFFF1F5F9);
-  Color get _textPrimary => abessDarkMode.value ? _textPrimary : Color(0xFF0F172A);
-  Color get _text70 => abessDarkMode.value ? _text70 : Color(0xFF334155);
-  Color get _text60 => abessDarkMode.value ? _text60 : Color(0xFF475569);
-  Color get _text54 => abessDarkMode.value ? _text54 : Color(0xFF64748B);
-  Color get _text38 => abessDarkMode.value ? _text38 : Color(0xFF64748B);
-  Color get _text30 => abessDarkMode.value ? _text30 : Color(0xFF94A3B8);
-  Color get _text24 => abessDarkMode.value ? _text24 : Color(0xFF64748B);
-  Color get _text12 => abessDarkMode.value ? _text12 : Color(0xFFCBD5E1);
-  Color get _text10 => abessDarkMode.value ? _text10 : Color(0xFFE2E8F0);
-  Color get _screenSurface => abessDarkMode.value ? _screenSurface : Color(0xFFFFFFFF);
+  Color get cyberCardBg => abessDarkMode.value ? const Color(0xFF080F1E) : const Color(0xFFFFFFFF);
+  Color get _fieldBackgroundColor => abessDarkMode.value ? const Color(0xFF030712) : const Color(0xFFF1F5F9);
+  Color get _textPrimary => abessDarkMode.value ? Colors.white : const Color(0xFF0F172A);
+  Color get _text70 => abessDarkMode.value ? Colors.white70 : const Color(0xFF334155);
+  Color get _text60 => abessDarkMode.value ? Colors.white60 : const Color(0xFF475569);
+  Color get _text54 => abessDarkMode.value ? Colors.white54 : const Color(0xFF64748B);
+  Color get _text38 => abessDarkMode.value ? Colors.white38 : const Color(0xFF64748B);
+  Color get _text30 => abessDarkMode.value ? Colors.white30 : const Color(0xFF94A3B8);
+  Color get _text24 => abessDarkMode.value ? Colors.white24 : const Color(0xFF64748B);
+  Color get _text12 => abessDarkMode.value ? Colors.white12 : const Color(0xFFCBD5E1);
+  Color get _text10 => abessDarkMode.value ? Colors.white10 : const Color(0xFFE2E8F0);
+  Color get _screenSurface => abessDarkMode.value ? const Color(0xFF060D1D) : const Color(0xFFFFFFFF);
 
   // Moteur V2Ray
   late FlutterV2ray v2ray;
