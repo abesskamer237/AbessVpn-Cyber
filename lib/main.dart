@@ -3093,7 +3093,6 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                   ],
                 ),
                 SizedBox(height: 4),
-                Text("En cas d'absence de token, configurez directement vos paramètres de connexion pour n'importe quel protocole et transport.", style: TextStyle(color: _text60, fontSize: 10)),
                 SizedBox(height: 14),
 
                 Text("PROTOCOLE RÉSEAU", style: TextStyle(color: _text70, fontSize: 10, fontWeight: FontWeight.bold)),
@@ -3196,7 +3195,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        "HOST HTTP — EN-TÊTE DU TRANSPORT",
+                        "HOST HTTP",
                         style: TextStyle(color: cyberCyan, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.7),
                       ),
                       SizedBox(height: 4),
@@ -3218,7 +3217,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        "SNI TLS — NOM PRÉSENTÉ AU CERTIFICAT",
+                        "SNI TLS",
                         style: TextStyle(color: cyberYellow, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.7),
                       ),
                       SizedBox(height: 4),
@@ -3336,7 +3335,6 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
               children: [
                 Text("IMPORTATION RAPIDE PAR LIEN BRUT", style: TextStyle(color: _text70, fontSize: 11, fontWeight: FontWeight.bold)),
                 SizedBox(height: 4),
-                Text("Collez un lien vless://, vmess://, trojan:// ou ss:// généré par un autre outil.", style: TextStyle(color: _text54, fontSize: 10)),
                 SizedBox(height: 10),
                 Row(
                   children: [
