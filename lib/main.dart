@@ -47,6 +47,7 @@ class ImportedVpnServer {
   final String? token;
   final String? encryptedLink;
   final int deviceLimit;
+  final String? allowedDeviceId;
 
   ImportedVpnServer({
     String? id,
@@ -67,6 +68,7 @@ class ImportedVpnServer {
     this.token,
     this.encryptedLink,
     this.deviceLimit = 1,
+    this.allowedDeviceId,
   }) : id = id ?? '${DateTime.now().microsecondsSinceEpoch}-${math.Random().nextInt(0x7fffffff)}';
 
   bool get isExpired => DateTime.now().isAfter(expiresAt);
@@ -294,9 +296,15 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     _showToast("Configuration enregistrée");
   }
 
-  String _localAbessProfileLink(ImportedVpnServer server) {
+  String _localAbessProfileLink(
+    ImportedVpnServer server, {
+    required double quotaGb,
+    required DateTime expiresAt,
+    required String allowedDeviceId,
+  }) {
     final payload = jsonEncode({
-      'v': 1,
+      'v': 2,
+      'licenseId': 'manual-${DateTime.now().microsecondsSinceEpoch}-${_newUuid()}',
       'name': server.name,
       'address': server.address,
       'port': server.port,
@@ -308,16 +316,150 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
       'tls': server.tls,
       'method': server.method,
       'wsHost': server.wsHost,
+      'bandwidthGb': quotaGb,
+      'bandwidthUsedGb': 0,
+      'expiresAt': expiresAt.toUtc().toIso8601String(),
+      'allowedDeviceId': allowedDeviceId.trim(),
     });
     final encoded = base64Url.encode(utf8.encode(payload)).replaceAll('=', '');
     return 'abess://profile.$encoded';
   }
 
+  Future<Map<String, dynamic>?> _promptManualExportOptions() async {
+    if (_deviceId.isEmpty) await _initDeviceId();
+    final quotaController = TextEditingController(text: '10');
+    final deviceController = TextEditingController(text: _deviceId);
+    var expiresAt = DateTime.now().add(const Duration(days: 30));
+    String? validationError;
+
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          backgroundColor: cyberCardBg,
+          title: Text('Créer un accès ABESS limité', style: TextStyle(color: _textPrimary, fontSize: 14, fontWeight: FontWeight.bold)),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Définis le quota, la date et l’heure d’expiration ainsi que l’installation autorisée avant de générer le lien ou le fichier.', style: TextStyle(color: _text70, fontSize: 11, height: 1.35)),
+                const SizedBox(height: 14),
+                Text('Quota de données (Go)', style: TextStyle(color: cyberGreen, fontSize: 11, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 5),
+                TextField(
+                  controller: quotaController,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  style: TextStyle(color: _textPrimary, fontSize: 12),
+                  decoration: InputDecoration(
+                    hintText: 'Ex. 10',
+                    filled: true,
+                    fillColor: _fieldBackgroundColor,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text('Expiration (date et heure locales)', style: TextStyle(color: cyberYellow, fontSize: 11, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 5),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () async {
+                      final now = DateTime.now();
+                      final selectedDate = await showDatePicker(
+                        context: dialogContext,
+                        initialDate: expiresAt.isAfter(now) ? expiresAt : now.add(const Duration(days: 1)),
+                        firstDate: DateTime(now.year, now.month, now.day),
+                        lastDate: DateTime(now.year + 10, now.month, now.day),
+                      );
+                      if (selectedDate == null || !dialogContext.mounted) return;
+                      final selectedTime = await showTimePicker(
+                        context: dialogContext,
+                        initialTime: TimeOfDay.fromDateTime(expiresAt),
+                      );
+                      if (selectedTime == null) return;
+                      setDialogState(() {
+                        expiresAt = DateTime(selectedDate.year, selectedDate.month, selectedDate.day, selectedTime.hour, selectedTime.minute);
+                        validationError = null;
+                      });
+                    },
+                    icon: Icon(Icons.event, size: 16, color: cyberYellow),
+                    label: Text('${expiresAt.toLocal().toString().substring(0, 16)}', style: TextStyle(color: _textPrimary, fontSize: 11)),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text('ID d’installation autorisée', style: TextStyle(color: cyberCyan, fontSize: 11, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 5),
+                TextField(
+                  controller: deviceController,
+                  textCapitalization: TextCapitalization.characters,
+                  style: TextStyle(color: cyberCyan, fontFamily: 'monospace', fontSize: 11),
+                  decoration: InputDecoration(
+                    hintText: 'Coller l’ID du téléphone destinataire',
+                    filled: true,
+                    fillColor: _fieldBackgroundColor,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text('Le destinataire trouve cet identifiant dans Mode manuel → ID d’installation, puis te l’envoie. Le lien sera refusé par ABESS VPN sur une autre installation.', style: TextStyle(color: _text54, fontSize: 10, height: 1.3)),
+                if (validationError != null) ...[
+                  const SizedBox(height: 10),
+                  Text(validationError!, style: const TextStyle(color: cyberRed, fontSize: 11)),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: Text('Annuler', style: TextStyle(color: _text60))),
+            ElevatedButton(
+              onPressed: () {
+                final quota = double.tryParse(quotaController.text.trim().replaceAll(',', '.'));
+                final deviceId = deviceController.text.trim();
+                if (quota == null || !quota.isFinite || quota <= 0 || quota > 100000) {
+                  setDialogState(() => validationError = 'Le quota doit être compris entre 0 et 100000 Go.');
+                  return;
+                }
+                if (!expiresAt.isAfter(DateTime.now())) {
+                  setDialogState(() => validationError = 'Choisis une date et une heure futures.');
+                  return;
+                }
+                if (deviceId.length < 8 || deviceId.length > 128 || RegExp(r'\\s').hasMatch(deviceId)) {
+                  setDialogState(() => validationError = 'L’ID doit contenir 8 à 128 caractères sans espace.');
+                  return;
+                }
+                Navigator.of(dialogContext).pop({
+                  'bandwidthGb': quota,
+                  'expiresAt': expiresAt,
+                  'allowedDeviceId': deviceId,
+                });
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: cyberGreen, foregroundColor: Colors.black),
+              child: const Text('Continuer', style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      ),
+    );
+    quotaController.dispose();
+    deviceController.dispose();
+    return result;
+  }
+
   Future<void> _copyManualProfileLink() async {
     final server = _manualProfileFromFields();
     if (server == null) return;
-    await Clipboard.setData(ClipboardData(text: _localAbessProfileLink(server)));
-    _showToast("Lien ABESS copié");
+    final options = await _promptManualExportOptions();
+    if (options == null) return;
+    final link = _localAbessProfileLink(
+      server,
+      quotaGb: options['bandwidthGb'] as double,
+      expiresAt: options['expiresAt'] as DateTime,
+      allowedDeviceId: options['allowedDeviceId'] as String,
+    );
+    await Clipboard.setData(ClipboardData(text: link));
+    _showToast('Lien ABESS limité généré et copié.');
   }
 
   Future<void> _pickAndImportAbessFile() async {
@@ -350,13 +492,20 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
   Future<void> _exportManualProfileFile() async {
     final server = _manualProfileFromFields();
     if (server == null) return;
+    final options = await _promptManualExportOptions();
+    if (options == null) return;
     try {
-      final link = _localAbessProfileLink(server);
+      final link = _localAbessProfileLink(
+        server,
+        quotaGb: options['bandwidthGb'] as double,
+        expiresAt: options['expiresAt'] as DateTime,
+        allowedDeviceId: options['allowedDeviceId'] as String,
+      );
       final safeName = server.name.replaceAll(RegExp(r'[^A-Za-z0-9_-]+'), '-').replaceAll(RegExp(r'^-+|-+$'), '');
       final directory = await getTemporaryDirectory();
       final file = File('${directory.path}/${safeName.isEmpty ? 'abess-profile' : safeName}.abess');
       await file.writeAsString('$link\n', flush: true);
-      await Share.shareXFiles([XFile(file.path)], text: server.name, subject: 'Configuration ABESS VPN');
+      await Share.shareXFiles([XFile(file.path)], text: '${server.name} • ${options['bandwidthGb']} Go', subject: 'Configuration ABESS VPN limitée');
     } catch (error) {
       _addLog('EXPORT .ABESS ÉCHOUÉ : $error');
       _showToast("Export impossible");
@@ -395,9 +544,21 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
       required String transport, required bool tls,
       String path = '/@abess237', String sni = '',
       String method = 'aes-128-gcm', String wsHost = '',
+      double bandwidthGb = 50.0, DateTime? expiresAt, String allowedDeviceId = '',
     }) {
       if (host.isEmpty || port < 1 || port > 65535 || passwordOrUuid.isEmpty) {
         throw FormatException('Le lien ne contient pas un hôte, port ou identifiant valide.');
+      }
+      if (!bandwidthGb.isFinite || bandwidthGb <= 0 || bandwidthGb > 100000) {
+        throw FormatException('Le quota du profil est invalide.');
+      }
+      final validExpiry = expiresAt ?? DateTime.now().add(const Duration(days: 30));
+      if (!validExpiry.isAfter(DateTime.now())) {
+        throw FormatException('Ce profil ABESS a expiré.');
+      }
+      final expectedDeviceId = allowedDeviceId.trim();
+      if (expectedDeviceId.isNotEmpty && (_deviceId.isEmpty || expectedDeviceId != _deviceId)) {
+        throw FormatException('Ce profil est lié à un autre ID d’installation. Demandez un lien créé pour votre ID ABESS.');
       }
       if (protocol == 'trojan' && !tls) {
         throw FormatException('Trojan sur un serveur public doit utiliser TLS.');
@@ -407,8 +568,9 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
         address: host, port: port, path: path.isNotEmpty ? path : '/@abess237',
         sni: sni.isNotEmpty ? sni : host, uuid: passwordOrUuid,
         protocol: protocol, transport: transport, tls: tls, method: method, wsHost: wsHost,
-        bandwidthGb: 50.0, bandwidthUsedGb: 0.0,
-        expiresAt: DateTime.now().add(Duration(days: 30)), token: 'RAW-LINK-IMPORT',
+        bandwidthGb: bandwidthGb, bandwidthUsedGb: 0.0,
+        expiresAt: validExpiry, token: 'RAW-LINK-IMPORT',
+        allowedDeviceId: expectedDeviceId.isEmpty ? null : expectedDeviceId,
       );
       unawaited(_storeAndSelectServer(server));
       _showToast('Lien ' + protocol + ' / ' + transport + ' importé.');
@@ -416,10 +578,21 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
 
     try {
       if (link.startsWith('abess://profile.')) {
+        if (_deviceId.isEmpty) throw const FormatException('ID d’installation non initialisé. Réessayez dans quelques secondes.');
         final encoded = link.substring('abess://profile.'.length).split(RegExp(r'[\s#]')).first;
         final decoded = jsonDecode(decodeB64(encoded));
         if (decoded is! Map) throw const FormatException('Fichier ABESS invalide.');
         final p = Map<String, dynamic>.from(decoded);
+        final version = int.tryParse((p['v'] ?? 1).toString()) ?? 1;
+        final allowedDeviceId = (p['allowedDeviceId'] ?? '').toString().trim();
+        if (version >= 2 && allowedDeviceId.isEmpty) {
+          throw const FormatException('Ce lien limité ne contient pas d’ID d’installation autorisé.');
+        }
+        final expiryText = p['expiresAt']?.toString();
+        final expiry = expiryText == null ? null : DateTime.tryParse(expiryText);
+        if (expiryText != null && expiry == null) throw const FormatException('Date d’expiration invalide.');
+        final rawQuota = p['bandwidthGb'];
+        final quota = rawQuota is num ? rawQuota.toDouble() : double.tryParse((rawQuota ?? '50').toString()) ?? 50.0;
         acceptProfile(
           name: (p['name'] ?? 'Profil ABESS').toString(),
           host: (p['address'] ?? '').toString(),
@@ -432,6 +605,9 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
           sni: (p['sni'] ?? p['address'] ?? '').toString(),
           wsHost: (p['wsHost'] ?? '').toString(),
           method: (p['method'] ?? 'aes-128-gcm').toString(),
+          bandwidthGb: quota,
+          expiresAt: expiry,
+          allowedDeviceId: allowedDeviceId,
         );
         return;
       }
@@ -690,6 +866,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     'token': server.token,
     'encryptedLink': server.encryptedLink,
     'deviceLimit': server.deviceLimit,
+    'allowedDeviceId': server.allowedDeviceId,
     'protocol': server.protocol,
     'transport': server.transport,
     'tls': server.tls,
@@ -712,6 +889,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     token: map['token']?.toString(),
     encryptedLink: map['encryptedLink']?.toString(),
     deviceLimit: (map['deviceLimit'] as num?)?.toInt() ?? 1,
+    allowedDeviceId: map['allowedDeviceId']?.toString(),
     protocol: map['protocol']?.toString() ?? 'vless',
     transport: map['transport']?.toString() ?? 'ws',
     tls: map['tls'] as bool? ?? true,
@@ -1016,6 +1194,17 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     _telemetryTimer = Timer.periodic(Duration(seconds: 1), (_) {
       if (!isConnected || !mounted) return;
 
+      if (currentServer?.isExpired == true || currentServer?.isQuotaExceeded == true) {
+        final expired = currentServer?.isExpired == true;
+        _userWantedConnection = false;
+        _reconnectTimer?.cancel();
+        _addLog(expired
+            ? 'ACCÈS MANUEL EXPIRÉ : DÉCONNEXION AUTOMATIQUE'
+            : 'QUOTA MANUEL ÉPUISÉ : DÉCONNEXION AUTOMATIQUE');
+        unawaited(_disconnectVpn());
+        return;
+      }
+
       setState(() {
         _connectionDurationSeconds++;
         _speedHistoryDownload.add(FlSpot(_speedHistoryDownload.length.toDouble(), _currentDownloadSpeed));
@@ -1034,8 +1223,9 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
         }
       });
 
-      if (_connectionDurationSeconds % 10 == 0 && _isManagedLicense(currentServer)) {
-        _syncUsageWithServer();
+      if (_connectionDurationSeconds % 10 == 0) {
+        unawaited(_saveCurrentServer());
+        if (_isManagedLicense(currentServer)) _syncUsageWithServer();
       }
     });
   }
@@ -1507,6 +1697,14 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
       _showImportModal();
       return;
     }
+    final requiredDeviceId = currentServer!.allowedDeviceId?.trim() ?? '';
+    if (requiredDeviceId.isNotEmpty && requiredDeviceId != _deviceId) {
+      _userWantedConnection = false;
+      _addLog('CONNEXION REFUSÉE : ID D’INSTALLATION NON AUTORISÉ');
+      _showToast('Cette configuration est liée à une autre installation ABESS.');
+      return;
+    }
+
     if (currentServer!.isQuotaExceeded) {
       _showQuotaExceededAlert();
       return;
@@ -1929,11 +2127,11 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
       _showToast('Lien ABESS invalide');
       return;
     }
+    if (_deviceId.isEmpty) await _initDeviceId();
     if (clean.startsWith('abess://profile.')) {
       _parseUniversalRawLink(clean);
       return;
     }
-    if (_deviceId.isEmpty) await _initDeviceId();
 
     for (final base in _masterServerUrls) {
       try {
@@ -2474,9 +2672,12 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
 
     return Scaffold(
       appBar: AppBar(
+        centerTitle: true,
         backgroundColor: Colors.transparent,
         elevation: 0,
         title: Row(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
               padding: const EdgeInsets.all(6),
@@ -3112,6 +3313,44 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: cyberCardBg,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: cyberGreen.withOpacity(0.45)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.phonelink_lock, color: cyberGreen, size: 18),
+                    SizedBox(width: 8),
+                    Expanded(child: Text("ID D’INSTALLATION ABESS", style: TextStyle(color: cyberGreen, fontWeight: FontWeight.bold, fontSize: 11, letterSpacing: 0.5))),
+                    IconButton(
+                      tooltip: "Copier l’ID d’installation",
+                      onPressed: _deviceId.isEmpty ? null : () async {
+                        await Clipboard.setData(ClipboardData(text: _deviceId));
+                        _showToast("ID d’installation copié");
+                      },
+                      icon: Icon(Icons.copy, color: cyberCyan, size: 18),
+                    ),
+                  ],
+                ),
+                SelectableText(
+                  _deviceId.isEmpty ? "Initialisation…" : _deviceId,
+                  style: TextStyle(color: _textPrimary, fontFamily: "monospace", fontSize: 12, fontWeight: FontWeight.bold),
+                ),
+                SizedBox(height: 5),
+                Text("Pour limiter un lien .abess à un téléphone précis, copie cet ID depuis le téléphone destinataire et colle-le dans le champ « ID d’installation autorisée » lors de l’export.", style: TextStyle(color: _text60, fontSize: 10, height: 1.35)),
+                SizedBox(height: 4),
+                Text("C’est un identifiant ABESS propre à l’installation de l’application, pas l’IMEI matériel du téléphone.", style: TextStyle(color: _text38, fontSize: 9, height: 1.3)),
+              ],
+            ),
+          ),
+          SizedBox(height: 12),
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(16),
