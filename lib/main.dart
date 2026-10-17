@@ -2207,18 +2207,18 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('IMPORTER UN ACCÈS SERVEUR', style: TextStyle(color: _textPrimary, fontSize: 14, fontWeight: FontWeight.bold)),
+                Text('IMPORTER CONFIG', style: TextStyle(color: _textPrimary, fontSize: 14, fontWeight: FontWeight.bold)),
                 IconButton(onPressed: () => Navigator.pop(ctx), icon: Icon(Icons.close, color: _text54)),
               ],
             ),
             SizedBox(height: 12),
-            Text('OPTION 1 : CLÉ TOKEN FOURNIE PAR L\'ADMINISTRATEUR', style: TextStyle(color: cyberGreen, fontSize: 11, fontWeight: FontWeight.bold)),
+            Text('TOKEN', style: TextStyle(color: cyberGreen, fontSize: 11, fontWeight: FontWeight.bold)),
             SizedBox(height: 6),
             TextField(
               controller: _tokenInputCtrl,
               style: TextStyle(color: cyberGreen, fontFamily: 'monospace'),
               decoration: InputDecoration(
-                hintText: 'Ex: ABESS-VIP-ROOT-2026',
+                hintText: 'Token',
                 hintStyle: TextStyle(color: _text30),
                 filled: true,
                 fillColor: _fieldFillColor,
@@ -2243,14 +2243,14 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
             SizedBox(height: 18),
             Divider(color: _text12),
             SizedBox(height: 10),
-            Text('OPTION 2 : LIEN CRYPTÉ ABESS:// OU FICHIER .ABESS', style: TextStyle(color: cyberCyan, fontSize: 11, fontWeight: FontWeight.bold)),
+            Text('ABESS:// / .ABESS', style: TextStyle(color: cyberCyan, fontSize: 11, fontWeight: FontWeight.bold)),
             SizedBox(height: 6),
             TextField(
               controller: _fileInputCtrl,
               maxLines: 2,
               style: TextStyle(color: cyberCyan, fontSize: 11, fontFamily: 'monospace'),
               decoration: InputDecoration(
-                hintText: 'Collez le lien crypté abess://...',
+                hintText: 'abess://',
                 hintStyle: TextStyle(color: _text30),
                 filled: true,
                 fillColor: _fieldFillColor,
@@ -2295,7 +2295,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                 _claimFreeTrial();
               },
               icon: Icon(Icons.bolt, color: cyberYellow),
-              label: Text('RÉCLAMER ESSAI GRATUIT 1 GO / 24H (ANTI-FRAUDE)', style: TextStyle(color: cyberYellow, fontSize: 11)),
+              label: Text('ESSAI 1 GO / 24H', style: TextStyle(color: cyberYellow, fontSize: 11)),
               style: OutlinedButton.styleFrom(
                 side: BorderSide(color: cyberYellow),
                 minimumSize: const Size.fromHeight(42),
