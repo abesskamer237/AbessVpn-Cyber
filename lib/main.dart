@@ -2062,6 +2062,15 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
               token: cleanToken,
               deviceLimit: data['deviceLimit'] ?? 1,
             );
+            final apiTlsHost = Uri.tryParse(_configuredApiBaseUrl)?.host.toLowerCase() ?? '';
+            const tlsWebTransports = {'ws', 'grpc', 'httpupgrade', 'xhttp'};
+            if (newServer.tls &&
+                tlsWebTransports.contains(newServer.transport.toLowerCase()) &&
+                apiTlsHost.isNotEmpty &&
+                newServer.sni.toLowerCase() != apiTlsHost) {
+              _addLog('ALERTE TLS : SNI ${newServer.sni} différent du domaine HTTPS ${apiTlsHost}. Le certificat peut être refusé et aucun trafic ne passera. Recréez le profil avec le SNI couvert par le certificat.');
+            }
+            _addLog('PROFIL IMPORTÉ : ${newServer.address}:${newServer.port} • ${newServer.protocol.toUpperCase()}/${newServer.transport.toUpperCase()} • Host HTTP : ${newServer.wsHost.isEmpty ? '(destination)' : newServer.wsHost} • SNI : ${newServer.sni}');
             await _storeAndSelectServer(newServer);
             _addLog('SERVEUR MAÎTRE VALIDÉ (${newServer.bandwidthGb} Go • Expiration: ${_formatRemaining(newServer.expiresAt)})');
             return;
@@ -2071,6 +2080,14 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
           _addLog('REFUS SERVEUR: ${data['error']}');
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${data['error']}')));
+          }
+          return;
+        } else if (res.statusCode == 503) {
+          final data = jsonDecode(res.body);
+          final message = data['error']?.toString() ?? 'Configuration serveur indisponible.';
+          _addLog('CONFIGURATION VPN REFUSÉE : $message');
+          if (mounted && !silent) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
           }
           return;
         }
