@@ -330,7 +330,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
   Future<Map<String, dynamic>?> _promptManualExportOptions() async {
     if (_deviceId.isEmpty) await _initDeviceId();
     final quotaController = TextEditingController(text: '10');
-    final deviceController = TextEditingController(text: _deviceId);
+    final deviceController = TextEditingController();
     var expiresAt = DateTime.now().add(const Duration(days: 30));
     String? validationError;
 
@@ -406,6 +406,8 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                 ),
                 const SizedBox(height: 5),
                 Text('Le destinataire trouve cet identifiant dans Mode manuel → ID d’installation, puis te l’envoie. Le lien sera refusé par ABESS VPN sur une autre installation.', style: TextStyle(color: _text54, fontSize: 10, height: 1.3)),
+                const SizedBox(height: 8),
+                Text('Limite technique : un profil manuel est contrôlé par l’application locale. Pour une licence suivie côté serveur, utilise aussi le panel et renseigne le même ID dans le champ de verrouillage de la licence.', style: TextStyle(color: _text38, fontSize: 9, height: 1.3)),
                 if (validationError != null) ...[
                   const SizedBox(height: 10),
                   Text(validationError!, style: const TextStyle(color: cyberRed, fontSize: 11)),
@@ -420,7 +422,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                 final quota = double.tryParse(quotaController.text.trim().replaceAll(',', '.'));
                 final deviceId = deviceController.text.trim();
                 if (quota == null || !quota.isFinite || quota <= 0 || quota > 100000) {
-                  setDialogState(() => validationError = 'Le quota doit être compris entre 0 et 100000 Go.');
+                  setDialogState(() => validationError = 'Le quota doit être supérieur à 0 et ne pas dépasser 100000 Go.');
                   return;
                 }
                 if (!expiresAt.isAfter(DateTime.now())) {
