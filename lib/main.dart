@@ -157,6 +157,9 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
   static const Color cyberYellow = Color(0xFFF59E0B);
   Color get cyberCardBg => abessDarkMode.value ? const Color(0xFF080F1E) : const Color(0xFFFFFFFF);
   Color get _fieldBackgroundColor => abessDarkMode.value ? const Color(0xFF030712) : const Color(0xFFF1F5F9);
+  Color get _fieldFillColor => abessDarkMode.value ? Colors.black45 : const Color(0xFFF8FAFC);
+  Color get _metricTileFill => abessDarkMode.value ? Colors.black : const Color(0xFFFFFFFF);
+  Color get _softSurfaceFill => abessDarkMode.value ? Colors.black45 : const Color(0xFFE2E8F0);
   Color get _textPrimary => abessDarkMode.value ? Colors.white : const Color(0xFF0F172A);
   Color get _text70 => abessDarkMode.value ? Colors.white70 : const Color(0xFF334155);
   Color get _text60 => abessDarkMode.value ? Colors.white60 : const Color(0xFF475569);
@@ -1367,7 +1370,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                       child: LinearProgressIndicator(
                         value: progress / 100.0,
                         minHeight: 6,
-                        backgroundColor: Colors.black45,
+                        backgroundColor: _softSurfaceFill,
                         valueColor: const AlwaysStoppedAnimation<Color>(cyberCyan),
                       ),
                     ),
@@ -1377,7 +1380,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                         Expanded(
                           child: Container(
                             padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(12), border: Border.all(color: cyberYellow.withOpacity( 0.4))),
+                            decoration: BoxDecoration(color: _metricTileFill, borderRadius: BorderRadius.circular(12), border: Border.all(color: cyberYellow.withOpacity( 0.4))),
                             child: Column(
                               children: [
                                 Text('LATENCE PING', style: TextStyle(color: cyberYellow, fontSize: 9, fontWeight: FontWeight.bold)),
@@ -1391,7 +1394,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                         Expanded(
                           child: Container(
                             padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(12), border: Border.all(color: cyberCyan.withOpacity( 0.4))),
+                            decoration: BoxDecoration(color: _metricTileFill, borderRadius: BorderRadius.circular(12), border: Border.all(color: cyberCyan.withOpacity( 0.4))),
                             child: Column(
                               children: [
                                 Text('DOWNLOAD', style: TextStyle(color: cyberCyan, fontSize: 9, fontWeight: FontWeight.bold)),
@@ -1406,7 +1409,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                         Expanded(
                           child: Container(
                             padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(12), border: Border.all(color: cyberGreen.withOpacity( 0.4))),
+                            decoration: BoxDecoration(color: _metricTileFill, borderRadius: BorderRadius.circular(12), border: Border.all(color: cyberGreen.withOpacity( 0.4))),
                             child: Column(
                               children: [
                                 Text('UPLOAD', style: TextStyle(color: cyberGreen, fontSize: 9, fontWeight: FontWeight.bold)),
@@ -2218,7 +2221,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                 hintText: 'Ex: ABESS-VIP-ROOT-2026',
                 hintStyle: TextStyle(color: _text30),
                 filled: true,
-                fillColor: Colors.black45,
+                fillColor: _fieldFillColor,
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: _text24)),
                 focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: cyberGreen)),
               ),
@@ -2250,7 +2253,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                 hintText: 'Collez le lien crypté abess://...',
                 hintStyle: TextStyle(color: _text30),
                 filled: true,
-                fillColor: Colors.black45,
+                fillColor: _fieldFillColor,
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: _text24)),
               ),
             ),
@@ -2342,7 +2345,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                   style: TextStyle(color: _textPrimary, fontSize: 12),
                   decoration: InputDecoration(
                     filled: true,
-                    fillColor: Colors.black45,
+                    fillColor: _fieldFillColor,
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                   ),
                 ),
@@ -2354,7 +2357,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                   style: TextStyle(color: cyberGreen, fontFamily: 'monospace', fontSize: 12),
                   decoration: InputDecoration(
                     filled: true,
-                    fillColor: Colors.black45,
+                    fillColor: _fieldFillColor,
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                   ),
                 ),
@@ -2374,7 +2377,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                       label: Text('${gb.toInt()} Go', style: TextStyle(color: sel ? Colors.black : _textPrimary, fontSize: 10)),
                       selected: sel,
                       selectedColor: cyberGreen,
-                      backgroundColor: Colors.black45,
+                      backgroundColor: _softSurfaceFill,
                       onSelected: (val) => setMState(() => _createQuotaGb = gb),
                     );
                   }).toList(),
@@ -2402,7 +2405,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                       label: Text(d == 1 ? '24h' : '$d jours', style: TextStyle(color: sel ? Colors.black : _textPrimary, fontSize: 10)),
                       selected: sel,
                       selectedColor: cyberCyan,
-                      backgroundColor: Colors.black45,
+                      backgroundColor: _softSurfaceFill,
                       onSelected: (val) => setMState(() => _createExpiryDays = d),
                     );
                   }).toList(),
@@ -2431,7 +2434,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                         label: Text('$lim Téléphone(s)', style: TextStyle(color: sel ? Colors.black : _textPrimary, fontSize: 10)),
                         selected: sel,
                         selectedColor: cyberYellow,
-                        backgroundColor: Colors.black45,
+                        backgroundColor: _softSurfaceFill,
                         onSelected: (val) => setMState(() => _createDeviceLimit = lim),
                       ),
                     );
@@ -2652,7 +2655,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                   ElevatedButton(
                     onPressed: () => setState(() => _currentNavIndex = 1),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.black54,
+                      backgroundColor: _softSurfaceFill,
                       foregroundColor: cyberGreen,
                       elevation: 0,
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -2827,7 +2830,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                     child: LinearProgressIndicator(
                       value: totalGb > 0 ? (usedPercent / 100.0) : 0.0,
                       minHeight: 8,
-                      backgroundColor: Colors.black45,
+                      backgroundColor: _softSurfaceFill,
                       valueColor: AlwaysStoppedAnimation<Color>(
                         usedPercent > 85 ? cyberRed : usedPercent > 60 ? cyberYellow : cyberGreen,
                       ),
