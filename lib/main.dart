@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_v2ray/flutter_v2ray.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -314,6 +315,33 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     if (server == null) return;
     await Clipboard.setData(ClipboardData(text: _localAbessProfileLink(server)));
     _showToast("Lien ABESS copié");
+  }
+
+  Future<void> _pickAndImportAbessFile() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['abess'],
+        withData: true,
+      );
+      if (result == null || result.files.isEmpty) return;
+      final picked = result.files.single;
+      final content = picked.bytes != null
+          ? utf8.decode(picked.bytes!)
+          : picked.path != null
+              ? await File(picked.path!).readAsString()
+              : '';
+      final link = content.trim();
+      if (link.isEmpty || !link.startsWith('abess://')) {
+        _showToast('Fichier ABESS invalide');
+        return;
+      }
+      _fileInputCtrl.text = link;
+      await _importServerByEncryptedLink(link);
+    } catch (error) {
+      _addLog('IMPORT .ABESS ÉCHOUÉ : $error');
+      _showToast('Import impossible');
+    }
   }
 
   Future<void> _exportManualProfileFile() async {
@@ -2227,18 +2255,35 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
               ),
             ),
             SizedBox(height: 10),
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.pop(ctx);
-                _importServerByEncryptedLink(_fileInputCtrl.text);
-              },
-              icon: Icon(Icons.file_download, color: Colors.black),
-              label: Text('DÉCHIFFRER & CHARGER FICHIER', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: cyberCyan,
-                minimumSize: const Size.fromHeight(45),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      unawaited(_pickAndImportAbessFile());
+                    },
+                    icon: Icon(Icons.folder_open, size: 17),
+                    label: Text('.ABESS'),
+                  ),
+                ),
+                SizedBox(width: 8),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _importServerByEncryptedLink(_fileInputCtrl.text);
+                    },
+                    icon: Icon(Icons.link, color: Colors.black),
+                    label: Text('IMPORTER', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: cyberCyan,
+                      minimumSize: const Size.fromHeight(45),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                  ),
+                ),
+              ],
             ),
             SizedBox(height: 14),
             OutlinedButton.icon(
