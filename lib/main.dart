@@ -98,7 +98,7 @@ class AbessVpnApp extends StatelessWidget {
               (isDarkMode ? ThemeData.dark() : ThemeData.light()).textTheme,
             ),
           ),
-          home: const MainVpnScreen(),
+          home: MainVpnScreen(),
         );
       },
     );
