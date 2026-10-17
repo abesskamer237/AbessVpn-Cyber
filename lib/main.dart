@@ -2002,6 +2002,12 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
 
     return {
       'log': {'loglevel': 'warning'},
+      // Résolveurs publics rapides avec repli. Ceci améliore surtout le temps
+      // de résolution des noms ; cela n'augmente pas directement le débit brut.
+      'dns': {
+        'servers': ['1.1.1.1', '1.0.0.1', '8.8.8.8'],
+        'queryStrategy': 'UseIP'
+      },
       'inbounds': [
         {
           'tag': 'socks-in',
@@ -2014,7 +2020,20 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
       'outbounds': [
         proxyOutbound,
         {'tag': 'direct', 'protocol': 'freedom', 'settings': {}}
-      ]
+      ],
+      // Si le moteur reçoit les requêtes DNS via son routage, privilégier
+      // le tunnel proxy plutôt qu'une sortie directe.
+      'routing': {
+        'domainStrategy': 'AsIs',
+        'rules': [
+          {
+            'type': 'field',
+            'network': 'tcp,udp',
+            'port': '53',
+            'outboundTag': 'proxy'
+          }
+        ]
+      }
     };
   }
 
