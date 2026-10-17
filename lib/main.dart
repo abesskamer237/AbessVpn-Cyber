@@ -1,17 +1,24 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_v2ray/flutter_v2ray.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:fl_chart/fl_chart.dart';
 
-void main() {
+final ValueNotifier<bool> abessDarkMode = ValueNotifier<bool>(true);
+
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  final prefs = await SharedPreferences.getInstance();
+  abessDarkMode.value = prefs.getBool('abess_dark_mode') ?? true;
   SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
@@ -72,18 +79,28 @@ class AbessVpnApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'AbessVpn',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF030712),
-        primaryColor: const Color(0xFF10B981),
-        textTheme: GoogleFonts.orbitronTextTheme(
-          ThemeData(brightness: Brightness.dark).textTheme,
-        ),
-      ),
-      home: const MainVpnScreen(),
+    return ValueListenableBuilder<bool>(
+      valueListenable: abessDarkMode,
+      builder: (context, isDarkMode, _) {
+        final brightness = isDarkMode ? Brightness.dark : Brightness.light;
+        return MaterialApp(
+          title: 'AbessVpn',
+          debugShowCheckedModeBanner: false,
+          theme: ThemeData(
+            brightness: brightness,
+            scaffoldBackgroundColor: isDarkMode ? const Color(0xFF030712) : const Color(0xFFF1F5F9),
+            primaryColor: isDarkMode ? const Color(0xFF10B981) : const Color(0xFF047857),
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: isDarkMode ? const Color(0xFF10B981) : const Color(0xFF047857),
+              brightness: brightness,
+            ),
+            textTheme: GoogleFonts.orbitronTextTheme(
+              (isDarkMode ? ThemeData.dark() : ThemeData.light()).textTheme,
+            ),
+          ),
+          home: const MainVpnScreen(),
+        );
+      },
     );
   }
 }
@@ -98,35 +115,35 @@ class MainVpnScreen extends StatefulWidget {
 class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProviderStateMixin {
   // Historique Télémétrie Graphique (fl_chart)
   final List<FlSpot> _speedHistoryDownload = [
-    const FlSpot(0, 0),
-    const FlSpot(1, 0.4),
-    const FlSpot(2, 1.2),
-    const FlSpot(3, 0.9),
-    const FlSpot(4, 2.5),
-    const FlSpot(5, 1.8),
-    const FlSpot(6, 3.2),
+    FlSpot(0, 0),
+    FlSpot(1, 0.4),
+    FlSpot(2, 1.2),
+    FlSpot(3, 0.9),
+    FlSpot(4, 2.5),
+    FlSpot(5, 1.8),
+    FlSpot(6, 3.2),
   ];
   final List<FlSpot> _speedHistoryUpload = [
-    const FlSpot(0, 0),
-    const FlSpot(1, 0.2),
-    const FlSpot(2, 0.6),
-    const FlSpot(3, 0.4),
-    const FlSpot(4, 1.1),
-    const FlSpot(5, 0.8),
-    const FlSpot(6, 1.4),
+    FlSpot(0, 0),
+    FlSpot(1, 0.2),
+    FlSpot(2, 0.6),
+    FlSpot(3, 0.4),
+    FlSpot(4, 1.1),
+    FlSpot(5, 0.8),
+    FlSpot(6, 1.4),
   ];
 
   void _showToast(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(message, style: const TextStyle(color: Colors.white, fontSize: 12)),
-        backgroundColor: const Color(0xFF0F172A),
-        duration: const Duration(seconds: 3),
+        content: Text(message, style: TextStyle(color: _textPrimary, fontSize: 12)),
+        backgroundColor: Color(0xFF0F172A),
+        duration: Duration(seconds: 3),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(10),
-          side: const BorderSide(color: Color(0xFF06B6D4), width: 0.8),
+          side: BorderSide(color: Color(0xFF06B6D4), width: 0.8),
         ),
       ),
     );
@@ -137,7 +154,18 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
   static const Color cyberCyan = Color(0xFF06B6D4);
   static const Color cyberRed = Color(0xFFEF4444);
   static const Color cyberYellow = Color(0xFFF59E0B);
-  static const Color cyberCardBg = Color(0xFF080F1E);
+  Color get cyberCardBg => abessDarkMode.value ? Color(0xFF080F1E) : Color(0xFFFFFFFF);
+  Color get _fieldBackgroundColor => abessDarkMode.value ? _fieldBackgroundColor : Color(0xFFF1F5F9);
+  Color get _textPrimary => abessDarkMode.value ? _textPrimary : Color(0xFF0F172A);
+  Color get _text70 => abessDarkMode.value ? _text70 : Color(0xFF334155);
+  Color get _text60 => abessDarkMode.value ? _text60 : Color(0xFF475569);
+  Color get _text54 => abessDarkMode.value ? _text54 : Color(0xFF64748B);
+  Color get _text38 => abessDarkMode.value ? _text38 : Color(0xFF64748B);
+  Color get _text30 => abessDarkMode.value ? _text30 : Color(0xFF94A3B8);
+  Color get _text24 => abessDarkMode.value ? _text24 : Color(0xFF64748B);
+  Color get _text12 => abessDarkMode.value ? _text12 : Color(0xFFCBD5E1);
+  Color get _text10 => abessDarkMode.value ? _text10 : Color(0xFFE2E8F0);
+  Color get _screenSurface => abessDarkMode.value ? _screenSurface : Color(0xFFFFFFFF);
 
   // Moteur V2Ray
   late FlutterV2ray v2ray;
@@ -181,7 +209,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
   int _createDeviceLimit = 1;
   bool _isCreatingToken = false;
 
-  // 3 ONGLETS CYBER NAVIGATION
+  // 4 ONGLETS CYBER NAVIGATION
   int _currentNavIndex = 0;
   bool _isMuxEnabled = true;
 
@@ -209,19 +237,34 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     _showToast("Nouvel UUID conforme généré !");
   }
 
-  void _saveCustomServerManual() {
+  ImportedVpnServer? _manualProfileFromFields() {
     final host = _customHostCtrl.text.trim();
     if (host.isEmpty) {
-      _showToast("Veuillez indiquer un hôte ou une IP");
-      return;
+      _showToast("Adresse requise");
+      return null;
     }
-    final port = int.tryParse(_customPortCtrl.text.trim()) ?? 443;
-    final uuid = _customUuidCtrl.text.trim().isEmpty ? _newUuid() : _customUuidCtrl.text.trim();
+    final port = int.tryParse(_customPortCtrl.text.trim());
+    if (port == null || port < 1 || port > 65535) {
+      _showToast("Port invalide");
+      return null;
+    }
+    if (_customUuidCtrl.text.trim().isEmpty) _customUuidCtrl.text = _newUuid();
+    final uuid = _customUuidCtrl.text.trim();
     final path = _customPathCtrl.text.trim().isEmpty ? "/@abess237" : _customPathCtrl.text.trim();
     final sni = _customSniCtrl.text.trim().isEmpty ? host : _customSniCtrl.text.trim();
-    final name = _customNameCtrl.text.trim().isEmpty ? "Custom ($_customProtocol/$_customTransport)" : _customNameCtrl.text.trim();
-
-    final customSrv = ImportedVpnServer(
+    final name = _customNameCtrl.text.trim().isEmpty
+        ? "Custom ($_customProtocol/$_customTransport)"
+        : _customNameCtrl.text.trim();
+    final isDirect = {'native', 'raw', 'tcp', 'kcp', 'mkcp'}.contains(_customTransport);
+    if (_customProtocol == 'trojan' && (isDirect || !_customTlsEnabled)) {
+      _showToast("Trojan nécessite TLS");
+      return null;
+    }
+    if (_customProtocol == 'shadowsocks' && _customTransport != 'native') {
+      _showToast("Shadowsocks utilise TCP + UDP natifs");
+      return null;
+    }
+    return ImportedVpnServer(
       name: name,
       address: host,
       port: port,
@@ -230,17 +273,63 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
       uuid: uuid,
       protocol: _customProtocol,
       transport: _customTransport,
-      tls: _customTlsEnabled && !{'native', 'raw', 'tcp', 'kcp', 'mkcp'}.contains(_customTransport),
+      tls: _customTlsEnabled && !isDirect,
       wsHost: _customWsHostCtrl.text.trim(),
       bandwidthGb: 999.0,
       bandwidthUsedGb: 0.0,
       expiresAt: DateTime.now().add(const Duration(days: 365)),
       token: "CUSTOM-ZERO-TOKEN",
     );
+  }
 
-    unawaited(_storeAndSelectServer(customSrv));
-    _addLog("SERVEUR MULTI-PROTOCOLE ACTIF ($_customProtocol/$_customTransport)");
-    _showToast("Serveur $_customProtocol configuré avec succès ! Prêt pour connexion.");
+  void _saveCustomServerManual() {
+    final customSrv = _manualProfileFromFields();
+    if (customSrv == null) return;
+    unawaited(_storeAndSelectServer(customSrv, switchToConnection: true));
+    _addLog("CONFIG MANUELLE : ${customSrv.protocol.toUpperCase()} / ${customSrv.transport.toUpperCase()}");
+    _showToast("Configuration enregistrée");
+  }
+
+  String _localAbessProfileLink(ImportedVpnServer server) {
+    final payload = jsonEncode({
+      'v': 1,
+      'name': server.name,
+      'address': server.address,
+      'port': server.port,
+      'path': server.path,
+      'sni': server.sni,
+      'uuid': server.uuid,
+      'protocol': server.protocol,
+      'transport': server.transport,
+      'tls': server.tls,
+      'method': server.method,
+      'wsHost': server.wsHost,
+    });
+    final encoded = base64Url.encode(utf8.encode(payload)).replaceAll('=', '');
+    return 'abess://profile.$encoded';
+  }
+
+  Future<void> _copyManualProfileLink() async {
+    final server = _manualProfileFromFields();
+    if (server == null) return;
+    await Clipboard.setData(ClipboardData(text: _localAbessProfileLink(server)));
+    _showToast("Lien ABESS copié");
+  }
+
+  Future<void> _exportManualProfileFile() async {
+    final server = _manualProfileFromFields();
+    if (server == null) return;
+    try {
+      final link = _localAbessProfileLink(server);
+      final safeName = server.name.replaceAll(RegExp(r'[^A-Za-z0-9_-]+'), '-').replaceAll(RegExp(r'^-+|-+$'), '');
+      final directory = await getTemporaryDirectory();
+      final file = File('${directory.path}/${safeName.isEmpty ? 'abess-profile' : safeName}.abess');
+      await file.writeAsString('$link\n', flush: true);
+      await Share.shareXFiles([XFile(file.path)], text: server.name, subject: 'Configuration ABESS VPN');
+    } catch (error) {
+      _addLog('EXPORT .ABESS ÉCHOUÉ : $error');
+      _showToast("Export impossible");
+    }
   }
 
   void _parseUniversalRawLink(String raw) {
@@ -276,10 +365,10 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
       String method = 'aes-128-gcm', String wsHost = '',
     }) {
       if (host.isEmpty || port < 1 || port > 65535 || passwordOrUuid.isEmpty) {
-        throw const FormatException('Le lien ne contient pas un hôte, port ou identifiant valide.');
+        throw FormatException('Le lien ne contient pas un hôte, port ou identifiant valide.');
       }
       if (protocol == 'trojan' && !tls) {
-        throw const FormatException('Trojan sur un serveur public doit utiliser TLS.');
+        throw FormatException('Trojan sur un serveur public doit utiliser TLS.');
       }
       final server = ImportedVpnServer(
         name: name.isNotEmpty ? name : 'Serveur importé (' + protocol + ')',
@@ -287,18 +376,38 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
         sni: sni.isNotEmpty ? sni : host, uuid: passwordOrUuid,
         protocol: protocol, transport: transport, tls: tls, method: method, wsHost: wsHost,
         bandwidthGb: 50.0, bandwidthUsedGb: 0.0,
-        expiresAt: DateTime.now().add(const Duration(days: 30)), token: 'RAW-LINK-IMPORT',
+        expiresAt: DateTime.now().add(Duration(days: 30)), token: 'RAW-LINK-IMPORT',
       );
       unawaited(_storeAndSelectServer(server));
       _showToast('Lien ' + protocol + ' / ' + transport + ' importé.');
     }
 
     try {
+      if (link.startsWith('abess://profile.')) {
+        final encoded = link.substring('abess://profile.'.length).split(RegExp(r'[\\s#]')).first;
+        final decoded = jsonDecode(decodeB64(encoded));
+        if (decoded is! Map) throw const FormatException('Fichier ABESS invalide.');
+        final p = Map<String, dynamic>.from(decoded);
+        acceptProfile(
+          name: (p['name'] ?? 'Profil ABESS').toString(),
+          host: (p['address'] ?? '').toString(),
+          port: int.tryParse((p['port'] ?? 443).toString()) ?? 443,
+          passwordOrUuid: (p['uuid'] ?? '').toString(),
+          protocol: (p['protocol'] ?? 'vless').toString().toLowerCase(),
+          transport: normalizeNetwork((p['transport'] ?? 'ws').toString()),
+          tls: p['tls'] as bool? ?? true,
+          path: (p['path'] ?? '/@abess237').toString(),
+          sni: (p['sni'] ?? p['address'] ?? '').toString(),
+          wsHost: (p['wsHost'] ?? '').toString(),
+          method: (p['method'] ?? 'aes-128-gcm').toString(),
+        );
+        return;
+      }
       if (link.startsWith('vless://')) {
         final uri = Uri.parse(link);
         final q = uri.queryParameters;
         final security = (q['security'] ?? 'tls').toLowerCase();
-        if (security == 'reality') throw const FormatException('Reality exige les paramètres de clés dédiés et n’est pas converti automatiquement.');
+        if (security == 'reality') throw FormatException('Reality exige les paramètres de clés dédiés et n’est pas converti automatiquement.');
         acceptProfile(
           name: uri.fragment.isNotEmpty ? Uri.decodeComponent(uri.fragment) : 'VLESS importé',
           host: uri.host, port: uri.port > 0 ? uri.port : 443,
@@ -313,13 +422,13 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
       if (link.startsWith('vmess://')) {
         final encoded = link.substring('vmess://'.length).split('#').first;
         final decoded = jsonDecode(decodeB64(encoded));
-        if (decoded is! Map) throw const FormatException('Profil VMess JSON invalide.');
+        if (decoded is! Map) throw FormatException('Profil VMess JSON invalide.');
         final config = Map<String, dynamic>.from(decoded);
         final host = (config['add'] ?? config['address'] ?? '').toString();
         final net = normalizeNetwork((config['net'] ?? 'tcp').toString());
         final port = int.tryParse((config['port'] ?? '443').toString()) ?? 443;
         final security = (config['tls'] ?? '').toString().toLowerCase();
-        if (security == 'reality') throw const FormatException('VMess/Reality exige des paramètres supplémentaires.');
+        if (security == 'reality') throw FormatException('VMess/Reality exige des paramètres supplémentaires.');
         acceptProfile(
           name: (config['ps'] ?? 'VMess importé').toString(), host: host, port: port,
           passwordOrUuid: (config['id'] ?? '').toString(), protocol: 'vmess', transport: net, tls: security == 'tls',
@@ -334,7 +443,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
         final uri = Uri.parse(link);
         final q = uri.queryParameters;
         final security = (q['security'] ?? 'tls').toLowerCase();
-        if (security == 'reality') throw const FormatException('Trojan/Reality n’est pas converti automatiquement.');
+        if (security == 'reality') throw FormatException('Trojan/Reality n’est pas converti automatiquement.');
         acceptProfile(
           name: uri.fragment.isNotEmpty ? Uri.decodeComponent(uri.fragment) : 'Trojan importé',
           host: uri.host, port: uri.port > 0 ? uri.port : 443,
@@ -348,24 +457,24 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
       if (link.startsWith('ss://')) {
         final uri = Uri.parse(link);
         if ((uri.queryParameters['plugin'] ?? '').isNotEmpty) {
-          throw const FormatException('Les liens Shadowsocks avec plugin de transport doivent être convertis séparément.');
+          throw FormatException('Les liens Shadowsocks avec plugin de transport doivent être convertis séparément.');
         }
         String method; String password; String host = uri.host; int port = uri.port;
         if (host.isNotEmpty && port > 0) {
           var userInfo = Uri.decodeComponent(uri.userInfo);
           if (!userInfo.contains(':')) { try { userInfo = decodeB64(userInfo); } catch (_) {} }
           final split = userInfo.indexOf(':');
-          if (split < 1) throw const FormatException('Identifiants Shadowsocks invalides.');
+          if (split < 1) throw FormatException('Identifiants Shadowsocks invalides.');
           method = userInfo.substring(0, split); password = userInfo.substring(split + 1);
         } else {
           final payload = link.substring(5).split('#').first.split('?').first;
           final decoded = decodeB64(payload);
           final at = decoded.lastIndexOf('@');
-          if (at < 1) throw const FormatException('Lien Shadowsocks invalide.');
+          if (at < 1) throw FormatException('Lien Shadowsocks invalide.');
           final credentials = decoded.substring(0, at);
           final endpoint = Uri.parse('ss://' + decoded.substring(at + 1));
           final split = credentials.indexOf(':');
-          if (split < 1 || endpoint.host.isEmpty || endpoint.port < 1) throw const FormatException('Identifiants ou adresse Shadowsocks invalides.');
+          if (split < 1 || endpoint.host.isEmpty || endpoint.port < 1) throw FormatException('Identifiants ou adresse Shadowsocks invalides.');
           method = credentials.substring(0, split); password = credentials.substring(split + 1);
           host = endpoint.host; port = endpoint.port;
         }
@@ -415,7 +524,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     super.initState();
     _pulseController = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 2),
+      duration: Duration(seconds: 2),
     )..repeat(reverse: true);
 
     _initDeviceId();
@@ -513,7 +622,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                   _reconnectAttempts++;
                   _addLog('RECONNEXION AUTO DANS 3s (TENTATIVE $_reconnectAttempts/5)...');
                   _reconnectTimer?.cancel();
-                  _reconnectTimer = Timer(const Duration(seconds: 3), () {
+                  _reconnectTimer = Timer(Duration(seconds: 3), () {
                     if (_userWantedConnection && !isConnected) {
                       _connectVpn();
                     }
@@ -567,7 +676,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     bandwidthGb: (map['bandwidthGb'] as num?)?.toDouble() ?? 10.0,
     bandwidthUsedGb: (map['bandwidthUsedGb'] as num?)?.toDouble() ?? 0.0,
     expiresAt: DateTime.tryParse(map['expiresAt']?.toString() ?? '')
-        ?? DateTime.now().add(const Duration(days: 30)),
+        ?? DateTime.now().add(Duration(days: 30)),
     token: map['token']?.toString(),
     encryptedLink: map['encryptedLink']?.toString(),
     deviceLimit: (map['deviceLimit'] as num?)?.toInt() ?? 1,
@@ -731,13 +840,13 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
       context: context,
       builder: (dialogContext) => AlertDialog(
         backgroundColor: cyberCardBg,
-        title: const Text('Supprimer la configuration ?', style: TextStyle(color: Colors.white, fontSize: 15)),
-        content: Text('« ${server.name} » sera supprimée de cet appareil.', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+        title: Text('Supprimer la configuration ?', style: TextStyle(color: _textPrimary, fontSize: 15)),
+        content: Text('« ${server.name} » sera supprimée de cet appareil.', style: TextStyle(color: _text70, fontSize: 12)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('ANNULER')),
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text('ANNULER')),
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('SUPPRIMER', style: TextStyle(color: cyberRed, fontWeight: FontWeight.bold)),
+            child: Text('SUPPRIMER', style: TextStyle(color: cyberRed, fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -769,19 +878,19 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
         children: [
           Row(
             children: [
-              const Icon(Icons.dns_outlined, color: cyberCyan, size: 18),
-              const SizedBox(width: 8),
-              const Expanded(
-                child: Text('MES CONFIGURATIONS', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 1)),
+              Icon(Icons.dns_outlined, color: cyberCyan, size: 18),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text('MES CONFIGURATIONS', style: TextStyle(color: _textPrimary, fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 1)),
               ),
-              Text('${savedServers.length}', style: const TextStyle(color: cyberCyan, fontSize: 12, fontWeight: FontWeight.bold)),
+              Text('${savedServers.length}', style: TextStyle(color: cyberCyan, fontSize: 12, fontWeight: FontWeight.bold)),
             ],
           ),
-          const SizedBox(height: 8),
+          SizedBox(height: 8),
           if (savedServers.isEmpty)
-            const Padding(
+            Padding(
               padding: EdgeInsets.symmetric(vertical: 8),
-              child: Text('Aucune configuration enregistrée. Ajoutez un token ou importez un lien ci-dessous.', style: TextStyle(color: Colors.white54, fontSize: 10)),
+              child: Text('Aucune configuration enregistrée. Ajoutez un token ou importez un lien ci-dessous.', style: TextStyle(color: _text54, fontSize: 10)),
             )
           else
             ...savedServers.map((profile) {
@@ -789,9 +898,9 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
               return Container(
                 margin: const EdgeInsets.only(top: 6),
                 decoration: BoxDecoration(
-                  color: selected ? cyberGreen.withOpacity(0.10) : const Color(0xFF030712),
+                  color: selected ? cyberGreen.withOpacity(0.10) : _fieldBackgroundColor,
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: selected ? cyberGreen : Colors.white12),
+                  border: Border.all(color: selected ? cyberGreen : _text12),
                 ),
                 child: Row(
                   children: [
@@ -803,15 +912,15 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                           child: Row(
                             children: [
-                              Icon(selected ? Icons.radio_button_checked : Icons.radio_button_off, color: selected ? cyberGreen : Colors.white38, size: 18),
-                              const SizedBox(width: 8),
+                              Icon(selected ? Icons.radio_button_checked : Icons.radio_button_off, color: selected ? cyberGreen : _text38, size: 18),
+                              SizedBox(width: 8),
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(profile.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: selected ? cyberGreen : Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
-                                    const SizedBox(height: 3),
-                                    Text('${profile.protocol.toUpperCase()} · ${profile.transport.toUpperCase()} · ${profile.tls ? "TLS" : "sans TLS"} · ${profile.address}:${profile.port}', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white54, fontSize: 9)),
+                                    Text(profile.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: selected ? cyberGreen : _textPrimary, fontSize: 11, fontWeight: FontWeight.bold)),
+                                    SizedBox(height: 3),
+                                    Text('${profile.protocol.toUpperCase()} · ${profile.transport.toUpperCase()} · ${profile.tls ? "TLS" : "sans TLS"} · ${profile.address}:${profile.port}', maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: _text54, fontSize: 9)),
                                   ],
                                 ),
                               ),
@@ -823,7 +932,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                     IconButton(
                       tooltip: 'Supprimer cette configuration',
                       onPressed: () => unawaited(_deleteSavedServer(profile)),
-                      icon: const Icon(Icons.delete_outline, color: cyberRed, size: 19),
+                      icon: Icon(Icons.delete_outline, color: cyberRed, size: 19),
                     ),
                   ],
                 ),
@@ -849,7 +958,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     for (final base in _masterServerUrls) {
       try {
         final stopwatch = Stopwatch()..start();
-        final res = await http.get(Uri.parse('$base/api/v1/ping')).timeout(const Duration(seconds: 3));
+        final res = await http.get(Uri.parse('$base/api/v1/ping')).timeout(Duration(seconds: 3));
         stopwatch.stop();
         if (res.statusCode == 200) {
           if (mounted) setState(() => _currentPingMs = stopwatch.elapsedMilliseconds);
@@ -870,9 +979,9 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     _lastReportedDownloadBytes = _currentDownloadBytes;
     _lastReportedUploadBytes = _currentUploadBytes;
 
-    _pingTimer = Timer.periodic(const Duration(seconds: 6), (_) => _measureRealPing());
+    _pingTimer = Timer.periodic(Duration(seconds: 6), (_) => _measureRealPing());
 
-    _telemetryTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+    _telemetryTimer = Timer.periodic(Duration(seconds: 1), (_) {
       if (!isConnected || !mounted) return;
 
       setState(() {
@@ -922,7 +1031,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
             'durationSeconds': 10,
             'deviceId': _deviceId,
           }),
-        ).timeout(const Duration(seconds: 3));
+        ).timeout(Duration(seconds: 3));
 
         if (res.statusCode == 401 || res.statusCode == 403) {
           String serverReason = 'Le serveur a refusé cette licence VPN.';
@@ -993,7 +1102,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
         await Clipboard.setData(ClipboardData(text: url));
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
+            SnackBar(
               content: Text('Lien copié dans le presse-papier !'),
               backgroundColor: cyberGreen,
             ),
@@ -1004,7 +1113,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
       await Clipboard.setData(ClipboardData(text: url));
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
+          SnackBar(
             content: Text('Lien copié dans le presse-papier !'),
             backgroundColor: cyberGreen,
           ),
@@ -1019,23 +1128,23 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: cyberCardBg,
-        title: const Text('🛑 QUOTA ÉPUISÉ', style: TextStyle(color: cyberRed, fontWeight: FontWeight.bold)),
+        title: Text('🛑 QUOTA ÉPUISÉ', style: TextStyle(color: cyberRed, fontWeight: FontWeight.bold)),
         content: Text(
           'Votre quota de ${currentServer?.bandwidthGb.toStringAsFixed(1)} Go est totalement consommé. Veuillez renouveler votre accès ou contacter l\'assistance WhatsApp ($_whatsappSupportPhone).',
-          style: const TextStyle(color: Colors.white70),
+          style: TextStyle(color: _text70),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('FERMER', style: TextStyle(color: Colors.white60)),
+            child: Text('FERMER', style: TextStyle(color: _text60)),
           ),
           TextButton.icon(
             onPressed: () {
               Navigator.pop(ctx);
               _openUrlSafe(_whatsappSupportUrl);
             },
-            icon: const Icon(Icons.chat, color: cyberGreen, size: 14),
-            label: const Text('ASSISTANCE WHATSAPP', style: TextStyle(color: cyberGreen, fontWeight: FontWeight.bold)),
+            icon: Icon(Icons.chat, color: cyberGreen, size: 14),
+            label: Text('ASSISTANCE WHATSAPP', style: TextStyle(color: cyberGreen, fontWeight: FontWeight.bold)),
           ),
           ElevatedButton(
             onPressed: () {
@@ -1043,7 +1152,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
               _showCreateConfigModal();
             },
             style: ElevatedButton.styleFrom(backgroundColor: cyberGreen),
-            child: const Text('CRÉER FORFAIT', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+            child: Text('CRÉER FORFAIT', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -1056,23 +1165,23 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: cyberCardBg,
-        title: const Text('⏳ LICENCE EXPIRÉE', style: TextStyle(color: cyberRed, fontWeight: FontWeight.bold)),
-        content: const Text(
+        title: Text('⏳ LICENCE EXPIRÉE', style: TextStyle(color: cyberRed, fontWeight: FontWeight.bold)),
+        content: Text(
           'La date d\'expiration de votre licence VPN est dépassée. Veuillez générer un nouveau token ou contacter l\'assistance WhatsApp.',
-          style: TextStyle(color: Colors.white70),
+          style: TextStyle(color: _text70),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('FERMER', style: TextStyle(color: Colors.white60)),
+            child: Text('FERMER', style: TextStyle(color: _text60)),
           ),
           TextButton.icon(
             onPressed: () {
               Navigator.pop(ctx);
               _openUrlSafe(_whatsappSupportUrl);
             },
-            icon: const Icon(Icons.chat, color: cyberGreen, size: 14),
-            label: const Text('SUPPORT WHATSAPP', style: TextStyle(color: cyberGreen, fontWeight: FontWeight.bold)),
+            icon: Icon(Icons.chat, color: cyberGreen, size: 14),
+            label: Text('SUPPORT WHATSAPP', style: TextStyle(color: cyberGreen, fontWeight: FontWeight.bold)),
           ),
           ElevatedButton(
             onPressed: () {
@@ -1080,7 +1189,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
               _showCreateConfigModal();
             },
             style: ElevatedButton.styleFrom(backgroundColor: cyberGreen),
-            child: const Text('NOUVEAU PASS', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+            child: Text('NOUVEAU PASS', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -1128,7 +1237,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
 
               try {
                 final sw = Stopwatch()..start();
-                final res = await http.get(Uri.parse('${_masterServerUrls[0]}/api/v1/ping')).timeout(const Duration(seconds: 4));
+                final res = await http.get(Uri.parse('${_masterServerUrls[0]}/api/v1/ping')).timeout(Duration(seconds: 4));
                 sw.stop();
                 if (res.statusCode != 200) throw StateError('Ping HTTP ${res.statusCode}');
                 testPing = sw.elapsedMilliseconds;
@@ -1144,7 +1253,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
 
               try {
                 final sw = Stopwatch()..start();
-                final res = await http.get(Uri.parse('${_masterServerUrls[0]}/api/v1/speedtest/download?bytes=1048576')).timeout(const Duration(seconds: 5));
+                final res = await http.get(Uri.parse('${_masterServerUrls[0]}/api/v1/speedtest/download?bytes=1048576')).timeout(Duration(seconds: 5));
                 sw.stop();
                 if (res.statusCode != 200 || res.bodyBytes.isEmpty) throw StateError('Download HTTP ${res.statusCode}');
                 final secs = math.max(0.05, sw.elapsedMilliseconds / 1000.0);
@@ -1167,7 +1276,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                   Uri.parse('${_masterServerUrls[0]}/api/v1/speedtest/upload'),
                   headers: {'Content-Type': 'application/octet-stream'},
                   body: dummy,
-                ).timeout(const Duration(seconds: 5));
+                ).timeout(Duration(seconds: 5));
                 sw.stop();
                 if (response.statusCode != 200) throw StateError('Upload HTTP ${response.statusCode}');
                 final secs = math.max(0.05, sw.elapsedMilliseconds / 1000.0);
@@ -1195,7 +1304,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
 
             return Container(
               padding: const EdgeInsets.all(20),
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
                 color: Color(0xFF060D1D),
                 borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
                 border: Border(top: BorderSide(color: cyberCyan, width: 2)),
@@ -1207,23 +1316,23 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                     Container(
                       width: 40,
                       height: 4,
-                      decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)),
+                      decoration: BoxDecoration(color: _text24, borderRadius: BorderRadius.circular(2)),
                     ),
-                    const SizedBox(height: 14),
-                    const Row(
+                    SizedBox(height: 14),
+                    Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Icon(Icons.speed, color: cyberCyan, size: 22),
                         SizedBox(width: 8),
                         Text(
                           'SPEED TEST CYBER V2.5',
-                          style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold, letterSpacing: 1.5),
+                          style: TextStyle(color: _textPrimary, fontSize: 15, fontWeight: FontWeight.bold, letterSpacing: 1.5),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 6),
-                    Text(status, style: const TextStyle(color: Colors.white60, fontSize: 11)),
-                    const SizedBox(height: 12),
+                    SizedBox(height: 6),
+                    Text(status, style: TextStyle(color: _text60, fontSize: 11)),
+                    SizedBox(height: 12),
                     ClipRRect(
                       borderRadius: BorderRadius.circular(6),
                       child: LinearProgressIndicator(
@@ -1233,7 +1342,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                         valueColor: const AlwaysStoppedAnimation<Color>(cyberCyan),
                       ),
                     ),
-                    const SizedBox(height: 16),
+                    SizedBox(height: 16),
                     Row(
                       children: [
                         Expanded(
@@ -1242,39 +1351,39 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                             decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(12), border: Border.all(color: cyberYellow.withOpacity( 0.4))),
                             child: Column(
                               children: [
-                                const Text('LATENCE PING', style: TextStyle(color: cyberYellow, fontSize: 9, fontWeight: FontWeight.bold)),
-                                const SizedBox(height: 4),
-                                Text('$testPing ms', style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                                Text('LATENCE PING', style: TextStyle(color: cyberYellow, fontSize: 9, fontWeight: FontWeight.bold)),
+                                SizedBox(height: 4),
+                                Text('$testPing ms', style: TextStyle(color: _textPrimary, fontSize: 16, fontWeight: FontWeight.bold)),
                               ],
                             ),
                           ),
                         ),
-                        const SizedBox(width: 8),
+                        SizedBox(width: 8),
                         Expanded(
                           child: Container(
                             padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(12), border: Border.all(color: cyberCyan.withOpacity( 0.4))),
                             child: Column(
                               children: [
-                                const Text('DOWNLOAD', style: TextStyle(color: cyberCyan, fontSize: 9, fontWeight: FontWeight.bold)),
-                                const SizedBox(height: 4),
-                                Text('${testDl.toStringAsFixed(1)} Mo/s', style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-                                Text('${(testDl * 8).toStringAsFixed(0)} Mbps', style: const TextStyle(color: Colors.white38, fontSize: 9)),
+                                Text('DOWNLOAD', style: TextStyle(color: cyberCyan, fontSize: 9, fontWeight: FontWeight.bold)),
+                                SizedBox(height: 4),
+                                Text('${testDl.toStringAsFixed(1)} Mo/s', style: TextStyle(color: _textPrimary, fontSize: 16, fontWeight: FontWeight.bold)),
+                                Text('${(testDl * 8).toStringAsFixed(0)} Mbps', style: TextStyle(color: _text38, fontSize: 9)),
                               ],
                             ),
                           ),
                         ),
-                        const SizedBox(width: 8),
+                        SizedBox(width: 8),
                         Expanded(
                           child: Container(
                             padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(12), border: Border.all(color: cyberGreen.withOpacity( 0.4))),
                             child: Column(
                               children: [
-                                const Text('UPLOAD', style: TextStyle(color: cyberGreen, fontSize: 9, fontWeight: FontWeight.bold)),
-                                const SizedBox(height: 4),
-                                Text('${testUl.toStringAsFixed(1)} Mo/s', style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-                                Text('${(testUl * 8).toStringAsFixed(0)} Mbps', style: const TextStyle(color: Colors.white38, fontSize: 9)),
+                                Text('UPLOAD', style: TextStyle(color: cyberGreen, fontSize: 9, fontWeight: FontWeight.bold)),
+                                SizedBox(height: 4),
+                                Text('${testUl.toStringAsFixed(1)} Mo/s', style: TextStyle(color: _textPrimary, fontSize: 16, fontWeight: FontWeight.bold)),
+                                Text('${(testUl * 8).toStringAsFixed(0)} Mbps', style: TextStyle(color: _text38, fontSize: 9)),
                               ],
                             ),
                           ),
@@ -1282,7 +1391,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                       ],
                     ),
                     if (verdict.isNotEmpty) ...[
-                      const SizedBox(height: 14),
+                      SizedBox(height: 14),
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
@@ -1292,24 +1401,24 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                         ),
                         child: Row(
                           children: [
-                            const Icon(Icons.check_circle, color: cyberGreen, size: 18),
-                            const SizedBox(width: 8),
+                            Icon(Icons.check_circle, color: cyberGreen, size: 18),
+                            SizedBox(width: 8),
                             Expanded(
-                              child: Text(verdict, style: const TextStyle(color: Colors.white, fontSize: 10, height: 1.3)),
+                              child: Text(verdict, style: TextStyle(color: _textPrimary, fontSize: 10, height: 1.3)),
                             ),
                           ],
                         ),
                       ),
                     ],
-                    const SizedBox(height: 18),
+                    SizedBox(height: 18),
                     ElevatedButton.icon(
                       onPressed: isTesting ? null : runTest,
                       icon: isTesting
-                          ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
-                          : const Icon(Icons.play_arrow, color: Colors.black),
+                          ? SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
+                          : Icon(Icons.play_arrow, color: Colors.black),
                       label: Text(
                         isTesting ? 'ANALYSE EN COURS...' : 'LANCER LE TEST DE DÉBIT',
-                        style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 12),
+                        style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 12),
                       ),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: cyberCyan,
@@ -1332,7 +1441,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
       try {
         final response = await http
             .get(Uri.parse('$base/api/v1/ping'))
-            .timeout(const Duration(seconds: 3));
+            .timeout(Duration(seconds: 3));
         if (response.statusCode != 200) continue;
 
         final payload = jsonDecode(response.body);
@@ -1677,7 +1786,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
             'deviceId': _deviceId,
             'model': 'Android Device',
           }),
-        ).timeout(const Duration(seconds: 4));
+        ).timeout(Duration(seconds: 4));
 
         if (res.statusCode == 200) {
           final data = jsonDecode(res.body);
@@ -1697,7 +1806,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
               wsHost: (srvConf['host'] ?? srvConf['wsHost'])?.toString() ?? '',
               bandwidthGb: (data['bandwidthGb'] as num?)?.toDouble() ?? 10.0,
               bandwidthUsedGb: (data['bandwidthUsedGb'] as num?)?.toDouble() ?? 0.0,
-              expiresAt: DateTime.tryParse(data['expiresAt'] ?? '') ?? DateTime.now().add(const Duration(days: 30)),
+              expiresAt: DateTime.tryParse(data['expiresAt'] ?? '') ?? DateTime.now().add(Duration(days: 30)),
               token: cleanToken,
               deviceLimit: data['deviceLimit'] ?? 1,
             );
@@ -1720,7 +1829,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
       _addLog('SERVEUR EN LIGNE INACCESSIBLE OU TOKEN INVALIDE');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Token non reconnu sur le serveur maître.')),
+          SnackBar(content: Text('Token non reconnu sur le serveur maître.')),
         );
       }
     }
@@ -1739,7 +1848,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
             'model': 'Smartphone Android',
             'os': 'Android 14/15',
           }),
-        ).timeout(const Duration(seconds: 4));
+        ).timeout(Duration(seconds: 4));
 
         final data = jsonDecode(res.body);
         if (res.statusCode == 200 && data['ok'] == true) {
@@ -1753,7 +1862,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
             uuid: srvConf['uuid']?.toString() ?? '',
             bandwidthGb: 1.0,
             bandwidthUsedGb: 0.0,
-            expiresAt: DateTime.tryParse(data['expiresAt'] ?? '') ?? DateTime.now().add(const Duration(days: 1)),
+            expiresAt: DateTime.tryParse(data['expiresAt'] ?? '') ?? DateTime.now().add(Duration(days: 1)),
             token: data['token'],
             encryptedLink: data['encryptedLink'],
             deviceLimit: 1,
@@ -1762,7 +1871,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
           _addLog('ESSAI 1 GO ACTIVÉ AVEC SUCCÈS');
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Pass 1 Go / 24h activé avec succès !')),
+              SnackBar(content: Text('Pass 1 Go / 24h activé avec succès !')),
             );
           }
           return;
@@ -1785,7 +1894,11 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     final clean = link.trim();
     if (clean.isEmpty) return;
     if (!clean.startsWith('abess://')) {
-      _showToast('Le lien doit commencer par abess://');
+      _showToast('Lien ABESS invalide');
+      return;
+    }
+    if (clean.startsWith('abess://profile.')) {
+      _parseUniversalRawLink(clean);
       return;
     }
     if (_deviceId.isEmpty) await _initDeviceId();
@@ -1800,7 +1913,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
             'deviceId': _deviceId,
             'model': 'Android Device',
           }),
-        ).timeout(const Duration(seconds: 5));
+        ).timeout(Duration(seconds: 5));
 
         final dynamic decoded = jsonDecode(response.body);
         if (response.statusCode == 200 && decoded is Map && decoded['valid'] == true) {
@@ -1884,7 +1997,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
             'deviceLimit': _createDeviceLimit,
             'resellerName': 'Client Application',
           }),
-        ).timeout(const Duration(seconds: 5));
+        ).timeout(Duration(seconds: 5));
 
         if (res.statusCode == 403) {
           final data = jsonDecode(res.body);
@@ -1897,31 +2010,31 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
             context: context,
             builder: (ctx) => AlertDialog(
               backgroundColor: cyberCardBg,
-              title: const Row(
+              title: Row(
                 children: [
                   Icon(Icons.admin_panel_settings, color: cyberYellow),
                   SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       'CRÉATION VIA LE PANEL',
-                      style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+                      style: TextStyle(color: _textPrimary, fontSize: 13, fontWeight: FontWeight.bold),
                     ),
                   ),
                 ],
               ),
-              content: Text(message, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+              content: Text(message, style: TextStyle(color: _text70, fontSize: 12)),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(ctx),
-                  child: const Text('FERMER', style: TextStyle(color: Colors.white60)),
+                  child: Text('FERMER', style: TextStyle(color: _text60)),
                 ),
                 ElevatedButton.icon(
                   onPressed: () {
                     Navigator.pop(ctx);
                     _openUrlSafe(base);
                   },
-                  icon: const Icon(Icons.open_in_new, size: 14, color: Colors.black),
-                  label: const Text('OUVRIR LE PANEL', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 11)),
+                  icon: Icon(Icons.open_in_new, size: 14, color: Colors.black),
+                  label: Text('OUVRIR LE PANEL', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 11)),
                   style: ElevatedButton.styleFrom(backgroundColor: cyberGreen),
                 ),
               ],
@@ -1947,34 +2060,34 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
               context: context,
               builder: (ctx) => AlertDialog(
                 backgroundColor: cyberCardBg,
-                title: const Row(
+                title: Row(
                   children: [
                     Icon(Icons.check_circle, color: cyberGreen),
                     SizedBox(width: 8),
-                    Text('CONFIG CRÉÉE !', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
+                    Text('CONFIG CRÉÉE !', style: TextStyle(color: _textPrimary, fontSize: 14, fontWeight: FontWeight.bold)),
                   ],
                 ),
                 content: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Code Token : $tokenGenerated', style: const TextStyle(color: cyberGreen, fontFamily: 'monospace', fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 6),
-                    Text('Quota : ${_createQuotaGb.toInt()} Go', style: const TextStyle(color: Colors.white70)),
-                    Text('Durée : $_createExpiryDays jours', style: const TextStyle(color: Colors.white70)),
-                    Text('Limite Appareils : $_createDeviceLimit', style: const TextStyle(color: Colors.white70)),
-                    const SizedBox(height: 12),
-                    const Text('Cette configuration a été enregistrée directement dans la base du serveur maître.', style: TextStyle(color: Colors.white38, fontSize: 11)),
+                    Text('Code Token : $tokenGenerated', style: TextStyle(color: cyberGreen, fontFamily: 'monospace', fontWeight: FontWeight.bold)),
+                    SizedBox(height: 6),
+                    Text('Quota : ${_createQuotaGb.toInt()} Go', style: TextStyle(color: _text70)),
+                    Text('Durée : $_createExpiryDays jours', style: TextStyle(color: _text70)),
+                    Text('Limite Appareils : $_createDeviceLimit', style: TextStyle(color: _text70)),
+                    SizedBox(height: 12),
+                    Text('Cette configuration a été enregistrée directement dans la base du serveur maître.', style: TextStyle(color: _text38, fontSize: 11)),
                   ],
                 ),
                 actions: [
                   TextButton.icon(
                     onPressed: () {
                       Clipboard.setData(ClipboardData(text: tokenGenerated));
-                      ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Token copié dans le presse-papier !')));
+                      ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text('Token copié dans le presse-papier !')));
                     },
-                    icon: const Icon(Icons.copy, size: 14, color: cyberCyan),
-                    label: const Text('COPIER TOKEN', style: TextStyle(color: cyberCyan, fontSize: 11)),
+                    icon: Icon(Icons.copy, size: 14, color: cyberCyan),
+                    label: Text('COPIER TOKEN', style: TextStyle(color: cyberCyan, fontSize: 11)),
                   ),
                   ElevatedButton(
                     onPressed: () {
@@ -2002,7 +2115,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                       _addLog('SERVEUR ACTIVÉ DIRECTEMENT DANS L\'APP');
                     },
                     style: ElevatedButton.styleFrom(backgroundColor: cyberGreen),
-                    child: const Text('APPLIQUER COMME MON SERVEUR', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 11)),
+                    child: Text('APPLIQUER COMME MON SERVEUR', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 11)),
                   ),
                 ],
               ),
@@ -2019,7 +2132,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
       _addLog('ERREUR DE COMMUNICATION SERVEUR');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Impossible de joindre le serveur maître.')),
+          SnackBar(content: Text('Impossible de joindre le serveur maître.')),
         );
       }
     }
@@ -2047,7 +2160,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
       context: context,
       backgroundColor: cyberCardBg,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
       ),
       builder: (ctx) => Padding(
@@ -2062,80 +2175,80 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('IMPORTER UN ACCÈS SERVEUR', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
-                IconButton(onPressed: () => Navigator.pop(ctx), icon: const Icon(Icons.close, color: Colors.white54)),
+                Text('IMPORTER UN ACCÈS SERVEUR', style: TextStyle(color: _textPrimary, fontSize: 14, fontWeight: FontWeight.bold)),
+                IconButton(onPressed: () => Navigator.pop(ctx), icon: Icon(Icons.close, color: _text54)),
               ],
             ),
-            const SizedBox(height: 12),
-            const Text('OPTION 1 : CLÉ TOKEN FOURNIE PAR L\'ADMINISTRATEUR', style: TextStyle(color: cyberGreen, fontSize: 11, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 6),
+            SizedBox(height: 12),
+            Text('OPTION 1 : CLÉ TOKEN FOURNIE PAR L\'ADMINISTRATEUR', style: TextStyle(color: cyberGreen, fontSize: 11, fontWeight: FontWeight.bold)),
+            SizedBox(height: 6),
             TextField(
               controller: _tokenInputCtrl,
-              style: const TextStyle(color: cyberGreen, fontFamily: 'monospace'),
+              style: TextStyle(color: cyberGreen, fontFamily: 'monospace'),
               decoration: InputDecoration(
                 hintText: 'Ex: ABESS-VIP-ROOT-2026',
-                hintStyle: const TextStyle(color: Colors.white30),
+                hintStyle: TextStyle(color: _text30),
                 filled: true,
                 fillColor: Colors.black45,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.white24)),
-                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: cyberGreen)),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: _text24)),
+                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: cyberGreen)),
               ),
             ),
-            const SizedBox(height: 10),
+            SizedBox(height: 10),
             ElevatedButton.icon(
               onPressed: () {
                 Navigator.pop(ctx);
                 _importServerByToken(_tokenInputCtrl.text);
               },
-              icon: const Icon(Icons.key, color: Colors.black),
-              label: const Text('ACTIVER PAR CLÉ TOKEN', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+              icon: Icon(Icons.key, color: Colors.black),
+              label: Text('ACTIVER PAR CLÉ TOKEN', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
               style: ElevatedButton.styleFrom(
                 backgroundColor: cyberGreen,
                 minimumSize: const Size.fromHeight(45),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
             ),
-            const SizedBox(height: 18),
-            const Divider(color: Colors.white12),
-            const SizedBox(height: 10),
-            const Text('OPTION 2 : LIEN CRYPTÉ ABESS:// OU FICHIER .ABESS', style: TextStyle(color: cyberCyan, fontSize: 11, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 6),
+            SizedBox(height: 18),
+            Divider(color: _text12),
+            SizedBox(height: 10),
+            Text('OPTION 2 : LIEN CRYPTÉ ABESS:// OU FICHIER .ABESS', style: TextStyle(color: cyberCyan, fontSize: 11, fontWeight: FontWeight.bold)),
+            SizedBox(height: 6),
             TextField(
               controller: _fileInputCtrl,
               maxLines: 2,
-              style: const TextStyle(color: cyberCyan, fontSize: 11, fontFamily: 'monospace'),
+              style: TextStyle(color: cyberCyan, fontSize: 11, fontFamily: 'monospace'),
               decoration: InputDecoration(
                 hintText: 'Collez le lien crypté abess://...',
-                hintStyle: const TextStyle(color: Colors.white30),
+                hintStyle: TextStyle(color: _text30),
                 filled: true,
                 fillColor: Colors.black45,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.white24)),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: _text24)),
               ),
             ),
-            const SizedBox(height: 10),
+            SizedBox(height: 10),
             ElevatedButton.icon(
               onPressed: () {
                 Navigator.pop(ctx);
                 _importServerByEncryptedLink(_fileInputCtrl.text);
               },
-              icon: const Icon(Icons.file_download, color: Colors.black),
-              label: const Text('DÉCHIFFRER & CHARGER FICHIER', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+              icon: Icon(Icons.file_download, color: Colors.black),
+              label: Text('DÉCHIFFRER & CHARGER FICHIER', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
               style: ElevatedButton.styleFrom(
                 backgroundColor: cyberCyan,
                 minimumSize: const Size.fromHeight(45),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
             ),
-            const SizedBox(height: 14),
+            SizedBox(height: 14),
             OutlinedButton.icon(
               onPressed: () {
                 Navigator.pop(ctx);
                 _claimFreeTrial();
               },
-              icon: const Icon(Icons.bolt, color: cyberYellow),
-              label: const Text('RÉCLAMER ESSAI GRATUIT 1 GO / 24H (ANTI-FRAUDE)', style: TextStyle(color: cyberYellow, fontSize: 11)),
+              icon: Icon(Icons.bolt, color: cyberYellow),
+              label: Text('RÉCLAMER ESSAI GRATUIT 1 GO / 24H (ANTI-FRAUDE)', style: TextStyle(color: cyberYellow, fontSize: 11)),
               style: OutlinedButton.styleFrom(
-                side: const BorderSide(color: cyberYellow),
+                side: BorderSide(color: cyberYellow),
                 minimumSize: const Size.fromHeight(42),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
@@ -2154,7 +2267,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
       context: context,
       backgroundColor: cyberCardBg,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
       ),
       builder: (ctx) => StatefulBuilder(
@@ -2171,40 +2284,40 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('CRÉER CONFIG / TOKEN (GIGAS & EXPIRATION)', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
-                    IconButton(onPressed: () => Navigator.pop(ctx), icon: const Icon(Icons.close, color: Colors.white54)),
+                    Text('CRÉER CONFIG / TOKEN (GIGAS & EXPIRATION)', style: TextStyle(color: _textPrimary, fontSize: 12, fontWeight: FontWeight.bold)),
+                    IconButton(onPressed: () => Navigator.pop(ctx), icon: Icon(Icons.close, color: _text54)),
                   ],
                 ),
-                const SizedBox(height: 10),
-                const Text('1. NOM DU FORFAIT / CLIENT', style: TextStyle(color: Colors.white70, fontSize: 10)),
-                const SizedBox(height: 4),
+                SizedBox(height: 10),
+                Text('1. NOM DU FORFAIT / CLIENT', style: TextStyle(color: _text70, fontSize: 10)),
+                SizedBox(height: 4),
                 TextField(
                   controller: _createPlanNameCtrl,
-                  style: const TextStyle(color: Colors.white, fontSize: 12),
+                  style: TextStyle(color: _textPrimary, fontSize: 12),
                   decoration: InputDecoration(
                     filled: true,
                     fillColor: Colors.black45,
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                   ),
                 ),
-                const SizedBox(height: 10),
-                const Text('2. CODE TOKEN', style: TextStyle(color: Colors.white70, fontSize: 10)),
-                const SizedBox(height: 4),
+                SizedBox(height: 10),
+                Text('2. CODE TOKEN', style: TextStyle(color: _text70, fontSize: 10)),
+                SizedBox(height: 4),
                 TextField(
                   controller: _createTokenCodeCtrl,
-                  style: const TextStyle(color: cyberGreen, fontFamily: 'monospace', fontSize: 12),
+                  style: TextStyle(color: cyberGreen, fontFamily: 'monospace', fontSize: 12),
                   decoration: InputDecoration(
                     filled: true,
                     fillColor: Colors.black45,
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                   ),
                 ),
-                const SizedBox(height: 14),
+                SizedBox(height: 14),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('3. NOMBRE DE GIGAS (QUOTA)', style: TextStyle(color: Colors.white70, fontSize: 10)),
-                    Text('${_createQuotaGb.toInt()} Go', style: const TextStyle(color: cyberGreen, fontWeight: FontWeight.bold)),
+                    Text('3. NOMBRE DE GIGAS (QUOTA)', style: TextStyle(color: _text70, fontSize: 10)),
+                    Text('${_createQuotaGb.toInt()} Go', style: TextStyle(color: cyberGreen, fontWeight: FontWeight.bold)),
                   ],
                 ),
                 Wrap(
@@ -2212,7 +2325,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                   children: [1.0, 5.0, 10.0, 25.0, 50.0, 100.0, 200.0].map((gb) {
                     final sel = _createQuotaGb == gb;
                     return ChoiceChip(
-                      label: Text('${gb.toInt()} Go', style: TextStyle(color: sel ? Colors.black : Colors.white, fontSize: 10)),
+                      label: Text('${gb.toInt()} Go', style: TextStyle(color: sel ? Colors.black : _textPrimary, fontSize: 10)),
                       selected: sel,
                       selectedColor: cyberGreen,
                       backgroundColor: Colors.black45,
@@ -2231,8 +2344,8 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('4. DATE D\'EXPIRATION (DURÉE)', style: TextStyle(color: Colors.white70, fontSize: 10)),
-                    Text('$_createExpiryDays Jours', style: const TextStyle(color: cyberCyan, fontWeight: FontWeight.bold)),
+                    Text('4. DATE D\'EXPIRATION (DURÉE)', style: TextStyle(color: _text70, fontSize: 10)),
+                    Text('$_createExpiryDays Jours', style: TextStyle(color: cyberCyan, fontWeight: FontWeight.bold)),
                   ],
                 ),
                 Wrap(
@@ -2240,7 +2353,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                   children: [1, 7, 15, 30, 90, 180, 365].map((d) {
                     final sel = _createExpiryDays == d;
                     return ChoiceChip(
-                      label: Text(d == 1 ? '24h' : '$d jours', style: TextStyle(color: sel ? Colors.black : Colors.white, fontSize: 10)),
+                      label: Text(d == 1 ? '24h' : '$d jours', style: TextStyle(color: sel ? Colors.black : _textPrimary, fontSize: 10)),
                       selected: sel,
                       selectedColor: cyberCyan,
                       backgroundColor: Colors.black45,
@@ -2259,8 +2372,8 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('5. LIMITE D\'APPAREILS AUTORISÉS', style: TextStyle(color: Colors.white70, fontSize: 10)),
-                    Text('$_createDeviceLimit Appareil(s)', style: const TextStyle(color: cyberYellow, fontWeight: FontWeight.bold)),
+                    Text('5. LIMITE D\'APPAREILS AUTORISÉS', style: TextStyle(color: _text70, fontSize: 10)),
+                    Text('$_createDeviceLimit Appareil(s)', style: TextStyle(color: cyberYellow, fontWeight: FontWeight.bold)),
                   ],
                 ),
                 Row(
@@ -2269,7 +2382,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                     return Padding(
                       padding: const EdgeInsets.only(right: 8.0, top: 4.0),
                       child: ChoiceChip(
-                        label: Text('$lim Téléphone(s)', style: TextStyle(color: sel ? Colors.black : Colors.white, fontSize: 10)),
+                        label: Text('$lim Téléphone(s)', style: TextStyle(color: sel ? Colors.black : _textPrimary, fontSize: 10)),
                         selected: sel,
                         selectedColor: cyberYellow,
                         backgroundColor: Colors.black45,
@@ -2278,15 +2391,15 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                     );
                   }).toList(),
                 ),
-                const SizedBox(height: 16),
+                SizedBox(height: 16),
                 ElevatedButton.icon(
                   onPressed: _isCreatingToken ? null : () => _submitCreateToken(setMState),
                   icon: _isCreatingToken
-                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
-                      : const Icon(Icons.cloud_upload, color: Colors.black),
+                      ? SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
+                      : Icon(Icons.cloud_upload, color: Colors.black),
                   label: Text(
                     _isCreatingToken ? 'ENREGISTREMENT SERVEUR...' : 'GÉNÉRER & ENREGISTRER SUR LE SERVEUR',
-                    style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 11),
+                    style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 11),
                   ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: cyberGreen,
@@ -2323,28 +2436,40 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(color: cyberGreen.withOpacity( 0.4)),
               ),
-              child: const Icon(Icons.shield, color: cyberGreen, size: 20),
+              child: Icon(Icons.shield, color: cyberGreen, size: 20),
             ),
-            const SizedBox(width: 10),
+            SizedBox(width: 10),
             Text(
               _currentNavIndex == 0
                   ? "AbessVpn Cyber"
                   : _currentNavIndex == 1
-                      ? "Serveurs & Protocoles"
-                      : "Outils & Diagnostic",
-              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 17),
+                      ? "Serveurs & Tokens"
+                      : _currentNavIndex == 2
+                          ? "Mode manuel"
+                          : "Outils & Diagnostic",
+              style: TextStyle(color: _textPrimary, fontWeight: FontWeight.bold, fontSize: 17),
             ),
           ],
         ),
         actions: [
           IconButton(
             onPressed: () => _openUrlSafe(_whatsappSupportUrl),
-            icon: const Icon(Icons.chat_bubble_outline, color: cyberGreen),
+            icon: Icon(Icons.chat_bubble_outline, color: cyberGreen),
             tooltip: "Support WhatsApp ($_whatsappSupportPhone)",
           ),
           IconButton(
+            onPressed: () async {
+              final next = !abessDarkMode.value;
+              abessDarkMode.value = next;
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.setBool('abess_dark_mode', next);
+            },
+            icon: Icon(abessDarkMode.value ? Icons.light_mode : Icons.dark_mode, color: cyberYellow),
+            tooltip: abessDarkMode.value ? 'Mode clair' : 'Mode sombre',
+          ),
+          IconButton(
             onPressed: _showSpeedTestModal,
-            icon: const Icon(Icons.speed, color: cyberCyan),
+            icon: Icon(Icons.speed, color: cyberCyan),
             tooltip: "Speed Test",
           ),
         ],
@@ -2355,7 +2480,8 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
           children: [
             _buildTab1Connection(srv, usedGb, totalGb, usedPercent, remainingDays),
             _buildTab2ProtocolsAndTokens(srv),
-            _buildTab3ToolsAndStability(srv),
+            _buildTab3ManualProfiles(srv),
+            _buildTab4ToolsAndStability(srv),
           ],
         ),
       ),
@@ -2369,7 +2495,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
           onTap: (index) => setState(() => _currentNavIndex = index),
           backgroundColor: cyberCardBg,
           selectedItemColor: cyberGreen,
-          unselectedItemColor: Colors.white38,
+          unselectedItemColor: _text38,
           selectedFontSize: 11,
           unselectedFontSize: 10,
           type: BottomNavigationBarType.fixed,
@@ -2385,9 +2511,14 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
               label: "Serveurs & Tokens",
             ),
             BottomNavigationBarItem(
+              icon: Icon(Icons.tune_outlined),
+              activeIcon: Icon(Icons.tune, color: cyberCyan),
+              label: "Manuel",
+            ),
+            BottomNavigationBarItem(
               icon: Icon(Icons.speed_outlined),
               activeIcon: Icon(Icons.speed, color: cyberGreen),
-              label: "Outils & Vitesse",
+              label: "Outils",
             ),
           ],
         ),
@@ -2414,15 +2545,15 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.info_outline, color: cyberCyan, size: 28),
-                  const SizedBox(width: 12),
-                  const Expanded(
+                  Icon(Icons.info_outline, color: cyberCyan, size: 28),
+                  SizedBox(width: 12),
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text("AUCUN SERVEUR CONFIGURÉ", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                        Text("AUCUN SERVEUR CONFIGURÉ", style: TextStyle(color: _textPrimary, fontWeight: FontWeight.bold, fontSize: 13)),
                         SizedBox(height: 2),
-                        Text("Importez un token ou configurez un serveur dans l'onglet Serveurs.", style: TextStyle(color: Colors.white60, fontSize: 10)),
+                        Text("Importez un token ou configurez un serveur dans l'onglet Serveurs.", style: TextStyle(color: _text60, fontSize: 10)),
                       ],
                     ),
                   ),
@@ -2435,12 +2566,12 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                       minimumSize: Size.zero,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                     ),
-                    child: const Text("CONFIGURER", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                    child: Text("CONFIGURER", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 14),
+            SizedBox(height: 14),
           ] else ...[
             Container(
               width: double.infinity,
@@ -2457,17 +2588,17 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text("SERVEUR ACTIF IMPORTÉ", style: TextStyle(color: Colors.white54, fontSize: 9, letterSpacing: 1.2)),
-                        const SizedBox(height: 2),
+                        Text("SERVEUR ACTIF IMPORTÉ", style: TextStyle(color: _text54, fontSize: 9, letterSpacing: 1.2)),
+                        SizedBox(height: 2),
                         Text(
                           srv.name,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                          style: TextStyle(color: _textPrimary, fontWeight: FontWeight.bold, fontSize: 13),
                         ),
                         Text(
                           "${srv.protocol.toUpperCase()} • ${srv.transport.toUpperCase()} • ${srv.tls ? "TLS activé" : "TLS non utilisé"}",
-                          style: const TextStyle(color: cyberGreen, fontSize: 10, fontWeight: FontWeight.bold),
+                          style: TextStyle(color: cyberGreen, fontSize: 10, fontWeight: FontWeight.bold),
                         ),
                       ],
                     ),
@@ -2481,15 +2612,15 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8),
-                        side: const BorderSide(color: cyberGreen),
+                        side: BorderSide(color: cyberGreen),
                       ),
                     ),
-                    child: const Text("CHANGER", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                    child: Text("CHANGER", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 14),
+            SizedBox(height: 14),
           ],
 
           if (srv != null && (srv.isExpired || srv.isQuotaExceeded || srv.usedPercentage >= 80)) ...[
@@ -2509,7 +2640,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                     color: (srv.isExpired || srv.isQuotaExceeded) ? cyberRed : cyberYellow,
                     size: 22,
                   ),
-                  const SizedBox(width: 10),
+                  SizedBox(width: 10),
                   Expanded(
                     child: Text(
                       (srv.isExpired || srv.isQuotaExceeded)
@@ -2531,7 +2662,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                       minimumSize: Size.zero,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
                     ),
-                    child: const Text("RECHARGER", style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold)),
+                    child: Text("RECHARGER", style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold)),
                   ),
                 ],
               ),
@@ -2550,10 +2681,10 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: isConnected
-                        ? Color.lerp(const Color(0xFF042F24), const Color(0xFF064E3B), pulseVal)
-                        : const Color(0xFF0B132B),
+                        ? Color.lerp(Color(0xFF042F24), Color(0xFF064E3B), pulseVal)
+                        : Color(0xFF0B132B),
                     border: Border.all(
-                      color: isConnected ? cyberGreen : Colors.white24,
+                      color: isConnected ? cyberGreen : _text24,
                       width: 4,
                     ),
                     boxShadow: [
@@ -2572,9 +2703,9 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                         Icon(
                           Icons.power_settings_new,
                           size: 46,
-                          color: isConnected ? cyberGreen : (srv != null ? Colors.white70 : Colors.white24),
+                          color: isConnected ? cyberGreen : (srv != null ? _text70 : _text24),
                         ),
-                        const SizedBox(height: 6),
+                        SizedBox(height: 6),
                         Text(
                           isConnecting
                               ? "CONNEXION..."
@@ -2582,7 +2713,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                                   ? "CONNECTÉ"
                                   : (srv != null ? "ACTIVER" : "AUCUN ACCÈS"),
                           style: TextStyle(
-                            color: isConnected ? cyberGreen : Colors.white70,
+                            color: isConnected ? cyberGreen : _text70,
                             fontSize: 11,
                             fontWeight: FontWeight.w900,
                             letterSpacing: 1.5,
@@ -2595,27 +2726,27 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
               },
             ),
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: 12),
 
           Text(
             _formatTimer(_connectionDurationSeconds),
-            style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900, letterSpacing: 2),
+            style: TextStyle(color: _textPrimary, fontSize: 22, fontWeight: FontWeight.w900, letterSpacing: 2),
           ),
-          const SizedBox(height: 4),
+          SizedBox(height: 4),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Text("IP TUNNEL : ", style: TextStyle(color: Colors.white38, fontSize: 10)),
-              Text(isConnected ? _virtualIp : "EN VEILLE", style: const TextStyle(color: cyberGreen, fontSize: 10, fontWeight: FontWeight.bold)),
-              const SizedBox(width: 10),
-              const Text("• HWID : ", style: TextStyle(color: Colors.white38, fontSize: 10)),
+              Text("IP TUNNEL : ", style: TextStyle(color: _text38, fontSize: 10)),
+              Text(isConnected ? _virtualIp : "EN VEILLE", style: TextStyle(color: cyberGreen, fontSize: 10, fontWeight: FontWeight.bold)),
+              SizedBox(width: 10),
+              Text("• HWID : ", style: TextStyle(color: _text38, fontSize: 10)),
               Text(
                 _deviceId.length > 10 ? "${_deviceId.substring(0, 10)}..." : _deviceId,
-                style: const TextStyle(color: cyberCyan, fontSize: 10),
+                style: TextStyle(color: cyberCyan, fontSize: 10),
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          SizedBox(height: 16),
 
           if (srv != null) ...[
             Container(
@@ -2631,20 +2762,20 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Row(
+                      Row(
                         children: [
                           Icon(Icons.pie_chart, color: cyberGreen, size: 14),
                           SizedBox(width: 4),
-                          Text("GIGAS UTILISÉS / QUOTA", style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold)),
+                          Text("GIGAS UTILISÉS / QUOTA", style: TextStyle(color: _text70, fontSize: 10, fontWeight: FontWeight.bold)),
                         ],
                       ),
                       Text(
                         "${usedGb.toStringAsFixed(2)} Go / ${totalGb.toStringAsFixed(1)} Go (${usedPercent.toInt()}%)",
-                        style: const TextStyle(color: cyberGreen, fontSize: 11, fontWeight: FontWeight.bold),
+                        style: TextStyle(color: cyberGreen, fontSize: 11, fontWeight: FontWeight.bold),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 8),
+                  SizedBox(height: 8),
                   ClipRRect(
                     borderRadius: BorderRadius.circular(8),
                     child: LinearProgressIndicator(
@@ -2656,18 +2787,18 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                       ),
                     ),
                   ),
-                  const SizedBox(height: 8),
+                  SizedBox(height: 8),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text("Restant: ${(totalGb - usedGb).toStringAsFixed(2)} Go", style: const TextStyle(color: cyberCyan, fontSize: 10, fontWeight: FontWeight.bold)),
-                      Text("Expire : $remainingDays", style: const TextStyle(color: Colors.white60, fontSize: 10)),
+                      Text("Restant: ${(totalGb - usedGb).toStringAsFixed(2)} Go", style: TextStyle(color: cyberCyan, fontSize: 10, fontWeight: FontWeight.bold)),
+                      Text("Expire : $remainingDays", style: TextStyle(color: _text60, fontSize: 10)),
                     ],
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 12),
+            SizedBox(height: 12),
           ],
 
           Row(
@@ -2678,90 +2809,90 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                   decoration: BoxDecoration(
                     color: cyberCardBg,
                     borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: Colors.white10),
+                    border: Border.all(color: _text10),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Row(
+                      Row(
                         children: [
                           Icon(Icons.arrow_downward, color: cyberCyan, size: 14),
                           SizedBox(width: 4),
-                          Text("DÉBIT DL", style: TextStyle(color: Colors.white54, fontSize: 9, fontWeight: FontWeight.bold)),
+                          Text("DÉBIT DL", style: TextStyle(color: _text54, fontSize: 9, fontWeight: FontWeight.bold)),
                         ],
                       ),
-                      const SizedBox(height: 4),
+                      SizedBox(height: 4),
                       Text(
                         isConnected ? "${_currentDownloadSpeed.toStringAsFixed(2)} Mo/s" : "0.00 Mo/s",
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                        style: TextStyle(color: _textPrimary, fontWeight: FontWeight.bold, fontSize: 14),
                       ),
                       Text(
                         "Total: ${_totalDownloadMb.toStringAsFixed(1)} Mo",
-                        style: const TextStyle(color: Colors.white38, fontSize: 8),
+                        style: TextStyle(color: _text38, fontSize: 8),
                       ),
                     ],
                   ),
                 ),
               ),
-              const SizedBox(width: 8),
+              SizedBox(width: 8),
               Expanded(
                 child: Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: cyberCardBg,
                     borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: Colors.white10),
+                    border: Border.all(color: _text10),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Row(
+                      Row(
                         children: [
                           Icon(Icons.arrow_upward, color: cyberGreen, size: 14),
                           SizedBox(width: 4),
-                          Text("DÉBIT UL", style: TextStyle(color: Colors.white54, fontSize: 9, fontWeight: FontWeight.bold)),
+                          Text("DÉBIT UL", style: TextStyle(color: _text54, fontSize: 9, fontWeight: FontWeight.bold)),
                         ],
                       ),
-                      const SizedBox(height: 4),
+                      SizedBox(height: 4),
                       Text(
                         isConnected ? "${_currentUploadSpeed.toStringAsFixed(2)} Mo/s" : "0.00 Mo/s",
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                        style: TextStyle(color: _textPrimary, fontWeight: FontWeight.bold, fontSize: 14),
                       ),
                       Text(
                         "Total: ${_totalUploadMb.toStringAsFixed(1)} Mo",
-                        style: const TextStyle(color: Colors.white38, fontSize: 8),
+                        style: TextStyle(color: _text38, fontSize: 8),
                       ),
                     ],
                   ),
                 ),
               ),
-              const SizedBox(width: 8),
+              SizedBox(width: 8),
               Expanded(
                 child: Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: cyberCardBg,
                     borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: Colors.white10),
+                    border: Border.all(color: _text10),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Row(
+                      Row(
                         children: [
                           Icon(Icons.wifi, color: cyberYellow, size: 14),
                           SizedBox(width: 4),
-                          Text("PING MS", style: TextStyle(color: Colors.white54, fontSize: 9, fontWeight: FontWeight.bold)),
+                          Text("PING MS", style: TextStyle(color: _text54, fontSize: 9, fontWeight: FontWeight.bold)),
                         ],
                       ),
-                      const SizedBox(height: 4),
+                      SizedBox(height: 4),
                       Text(
                         _currentPingMs > 0 ? '$_currentPingMs ms' : '—',
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                        style: TextStyle(color: _textPrimary, fontWeight: FontWeight.bold, fontSize: 14),
                       ),
-                      const Text(
+                      Text(
                         "Serv. Maître",
-                        style: TextStyle(color: Colors.white38, fontSize: 8),
+                        style: TextStyle(color: _text38, fontSize: 8),
                       ),
                     ],
                   ),
@@ -2769,42 +2900,42 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: 12),
 
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
               color: cyberCardBg,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white10),
+              border: Border.all(color: _text10),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Row(
+                Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text("MONITEUR BANDE PASSANTE TEMPS RÉEL", style: TextStyle(color: Colors.white54, fontSize: 9, fontWeight: FontWeight.bold)),
+                    Text("MONITEUR BANDE PASSANTE TEMPS RÉEL", style: TextStyle(color: _text54, fontSize: 9, fontWeight: FontWeight.bold)),
                     Row(
                       children: [
                         Icon(Icons.circle, color: cyberCyan, size: 8),
                         SizedBox(width: 4),
-                        Text("Download", style: TextStyle(color: Colors.white60, fontSize: 9)),
+                        Text("Download", style: TextStyle(color: _text60, fontSize: 9)),
                         SizedBox(width: 8),
                         Icon(Icons.circle, color: cyberGreen, size: 8),
                         SizedBox(width: 4),
-                        Text("Upload", style: TextStyle(color: Colors.white60, fontSize: 9)),
+                        Text("Upload", style: TextStyle(color: _text60, fontSize: 9)),
                       ],
                     ),
                   ],
                 ),
-                const SizedBox(height: 10),
+                SizedBox(height: 10),
                 SizedBox(
                   height: 100,
                   child: LineChart(
                     LineChartData(
-                      gridData: const FlGridData(show: false),
-                      titlesData: const FlTitlesData(show: false),
+                      gridData: FlGridData(show: false),
+                      titlesData: FlTitlesData(show: false),
                       borderData: FlBorderData(show: false),
                       lineBarsData: [
                         LineChartBarData(
@@ -2813,7 +2944,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                           color: cyberCyan,
                           barWidth: 2,
                           isStrokeCapRound: true,
-                          dotData: const FlDotData(show: false),
+                          dotData: FlDotData(show: false),
                           belowBarData: BarAreaData(show: true, color: cyberCyan.withOpacity( 0.12)),
                         ),
                         LineChartBarData(
@@ -2822,7 +2953,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                           color: cyberGreen,
                           barWidth: 2,
                           isStrokeCapRound: true,
-                          dotData: const FlDotData(show: false),
+                          dotData: FlDotData(show: false),
                           belowBarData: BarAreaData(show: true, color: cyberGreen.withOpacity( 0.08)),
                         ),
                       ],
@@ -2838,7 +2969,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
   }
 
   // ==========================================================================
-  // ONGLET 2 : STUDIO SERVEURS, TOKENS & MODE MULTI-PROTOCOLES (ZERO-TOKEN)
+  // ONGLET 2 : SERVEURS & TOKENS
   // ==========================================================================
   Widget _buildTab2ProtocolsAndTokens(ImportedVpnServer? srv) {
     return SingleChildScrollView(
@@ -2847,7 +2978,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _buildSavedProfilesSection(),
-          const SizedBox(height: 16),
+          SizedBox(height: 16),
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(16),
@@ -2859,35 +2990,35 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Row(
+                Row(
                   children: [
                     Icon(Icons.vpn_key, color: cyberGreen, size: 18),
                     SizedBox(width: 8),
-                    Text("ACTIVATION PAR CLÉ TOKEN", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 1.1)),
+                    Text("ACTIVATION PAR CLÉ TOKEN", style: TextStyle(color: _textPrimary, fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 1.1)),
                   ],
                 ),
-                const SizedBox(height: 6),
-                const Text("Saisissez votre code licence fourni par votre revendeur officiel pour activer votre accès sécurisé.", style: TextStyle(color: Colors.white60, fontSize: 10)),
-                const SizedBox(height: 12),
+                SizedBox(height: 6),
+                Text("Saisissez votre code licence fourni par votre revendeur officiel pour activer votre accès sécurisé.", style: TextStyle(color: _text60, fontSize: 10)),
+                SizedBox(height: 12),
                 Row(
                   children: [
                     Expanded(
                       child: TextField(
                         controller: _tokenInputCtrl,
-                        style: const TextStyle(color: cyberGreen, fontFamily: "monospace", fontSize: 12),
+                        style: TextStyle(color: cyberGreen, fontFamily: "monospace", fontSize: 12),
                         decoration: InputDecoration(
                           hintText: "EX: ABESS-VIP-ROOT-2026",
-                          hintStyle: const TextStyle(color: Colors.white30, fontSize: 11),
+                          hintStyle: TextStyle(color: _text30, fontSize: 11),
                           filled: true,
-                          fillColor: const Color(0xFF030712),
+                          fillColor: _fieldBackgroundColor,
                           contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: cyberGreen.withOpacity( 0.4))),
-                          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Colors.white24)),
-                          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: cyberGreen)),
+                          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _text24)),
+                          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: cyberGreen)),
                         ),
                       ),
                     ),
-                    const SizedBox(width: 8),
+                    SizedBox(width: 8),
                     ElevatedButton(
                       onPressed: () {
                         if (_tokenInputCtrl.text.isNotEmpty) {
@@ -2900,17 +3031,17 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                       ),
-                      child: const Text("VALIDER", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
+                      child: Text("VALIDER", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
                     ),
                   ],
                 ),
-                const SizedBox(height: 10),
+                SizedBox(height: 10),
                 OutlinedButton.icon(
                   onPressed: _claimFreeTrial,
-                  icon: const Icon(Icons.bolt, color: cyberYellow, size: 16),
-                  label: const Text("RÉCLAMER MON ESSAI GRATUIT 1 GO / 24H", style: TextStyle(color: cyberYellow, fontWeight: FontWeight.bold, fontSize: 11)),
+                  icon: Icon(Icons.bolt, color: cyberYellow, size: 16),
+                  label: Text("RÉCLAMER MON ESSAI GRATUIT 1 GO / 24H", style: TextStyle(color: cyberYellow, fontWeight: FontWeight.bold, fontSize: 11)),
                   style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: cyberYellow),
+                    side: BorderSide(color: cyberYellow),
                     minimumSize: const Size.fromHeight(38),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
@@ -2918,8 +3049,20 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
               ],
             ),
           ),
-          const SizedBox(height: 16),
+          SizedBox(height: 16),
 
+        ],
+      ),
+    );
+  }
+
+  // ONGLET 3 : CONFIGURATION MANUELLE
+  Widget _buildTab3ManualProfiles(ImportedVpnServer? srv) {
+    return SingleChildScrollView(
+      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(16),
@@ -2934,77 +3077,77 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Row(
+                    Row(
                       children: [
                         Icon(Icons.tune, color: cyberCyan, size: 18),
                         SizedBox(width: 8),
-                        Text("MODE SANS TOKEN (MULTI-PROTOCOLES)", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 1.1)),
+                        Text("MODE SANS TOKEN (MULTI-PROTOCOLES)", style: TextStyle(color: _textPrimary, fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 1.1)),
                       ],
                     ),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                       decoration: BoxDecoration(color: cyberCyan.withOpacity( 0.2), borderRadius: BorderRadius.circular(8)),
-                      child: const Text("AUTONOME", style: TextStyle(color: cyberCyan, fontSize: 9, fontWeight: FontWeight.bold)),
+                      child: Text("AUTONOME", style: TextStyle(color: cyberCyan, fontSize: 9, fontWeight: FontWeight.bold)),
                     ),
                   ],
                 ),
-                const SizedBox(height: 4),
-                const Text("En cas d'absence de token, configurez directement vos paramètres de connexion pour n'importe quel protocole et transport.", style: TextStyle(color: Colors.white60, fontSize: 10)),
-                const SizedBox(height: 14),
+                SizedBox(height: 4),
+                Text("En cas d'absence de token, configurez directement vos paramètres de connexion pour n'importe quel protocole et transport.", style: TextStyle(color: _text60, fontSize: 10)),
+                SizedBox(height: 14),
 
-                const Text("PROTOCOLE RÉSEAU", style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 6),
+                Text("PROTOCOLE RÉSEAU", style: TextStyle(color: _text70, fontSize: 10, fontWeight: FontWeight.bold)),
+                SizedBox(height: 6),
                 Row(
                   children: [
                     _buildProtocolChip("vless", "VLESS (Recommandé)"),
-                    const SizedBox(width: 6),
+                    SizedBox(width: 6),
                     _buildProtocolChip("vmess", "VMess"),
-                    const SizedBox(width: 6),
+                    SizedBox(width: 6),
                     _buildProtocolChip("trojan", "Trojan"),
-                    const SizedBox(width: 6),
+                    SizedBox(width: 6),
                     _buildProtocolChip("shadowsocks", "Shadowsocks"),
                   ],
                 ),
-                const SizedBox(height: 12),
+                SizedBox(height: 12),
 
-                const Text("TRANSPORT STREAM", style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 6),
+                Text("TRANSPORT STREAM", style: TextStyle(color: _text70, fontSize: 10, fontWeight: FontWeight.bold)),
+                SizedBox(height: 6),
                 if (_customProtocol != "shadowsocks")
                   Row(
                     children: [
                       _buildTransportChip("ws", "WebSocket"),
-                      const SizedBox(width: 6),
+                      SizedBox(width: 6),
                       _buildTransportChip("grpc", "gRPC"),
-                      const SizedBox(width: 6),
+                      SizedBox(width: 6),
                       _buildTransportChip("httpupgrade", "HTTPUpgrade"),
-                      const SizedBox(width: 6),
+                      SizedBox(width: 6),
                       _buildTransportChip("xhttp", "XHTTP"),
                     ],
                   ),
                 if (_customProtocol == "vmess") ...[
-                  const SizedBox(height: 6),
+                  SizedBox(height: 6),
                   Row(
                     children: [
                       _buildTransportChip("raw", "RAW / TCP 10060"),
-                      const SizedBox(width: 6),
+                      SizedBox(width: 6),
                       _buildTransportChip("kcp", "mKCP / UDP 10061"),
-                      const Expanded(child: SizedBox()),
-                      const Expanded(child: SizedBox()),
+                      Expanded(child: SizedBox()),
+                      Expanded(child: SizedBox()),
                     ],
                   ),
                 ],
                 if (_customProtocol == "shadowsocks") ...[
-                  const SizedBox(height: 6),
+                  SizedBox(height: 6),
                   Row(
                     children: [
                       _buildTransportChip("native", "TCP + UDP natifs"),
-                      const Expanded(child: SizedBox()),
-                      const Expanded(child: SizedBox()),
-                      const Expanded(child: SizedBox()),
+                      Expanded(child: SizedBox()),
+                      Expanded(child: SizedBox()),
+                      Expanded(child: SizedBox()),
                     ],
                   ),
                 ],
-                const SizedBox(height: 14),
+                SizedBox(height: 14),
 
                 Container(
                   width: double.infinity,
@@ -3017,18 +3160,18 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         "ADRESSE DE DESTINATION — DOMAINE/IP + PORT",
                         style: TextStyle(color: cyberGreen, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.7),
                       ),
-                      const SizedBox(height: 10),
+                      SizedBox(height: 10),
                       Row(
                         children: [
                           Expanded(
                             flex: 2,
                             child: _buildFormField("Domaine/IP de destination", _customHostCtrl, "vpn.ton-domaine.com"),
                           ),
-                          const SizedBox(width: 8),
+                          SizedBox(width: 8),
                           Expanded(
                             flex: 1,
                             child: _buildFormField("Port", _customPortCtrl, "443"),
@@ -3038,7 +3181,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                     ],
                   ),
                 ),
-                const SizedBox(height: 10),
+                SizedBox(height: 10),
 
                 Container(
                   width: double.infinity,
@@ -3051,21 +3194,21 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         "HOST HTTP — EN-TÊTE DU TRANSPORT",
                         style: TextStyle(color: cyberCyan, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.7),
                       ),
-                      const SizedBox(height: 4),
-                      const Text(
+                      SizedBox(height: 4),
+                      Text(
                         "Champ distinct de l’adresse IP/domaine du serveur et du SNI TLS. Utilisé pour Host ou :authority avec WS, gRPC, HTTPUpgrade et XHTTP. Laisser vide pour reprendre l’adresse du serveur.",
-                        style: TextStyle(color: Colors.white60, fontSize: 10, height: 1.35),
+                        style: TextStyle(color: _text60, fontSize: 10, height: 1.35),
                       ),
-                      const SizedBox(height: 10),
+                      SizedBox(height: 10),
                       _buildFormField("Host HTTP / WebSocket (facultatif)", _customWsHostCtrl, "host.exemple.com"),
                     ],
                   ),
                 ),
-                const SizedBox(height: 10),
+                SizedBox(height: 10),
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.all(12),
@@ -3077,21 +3220,21 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         "SNI TLS — NOM PRÉSENTÉ AU CERTIFICAT",
                         style: TextStyle(color: cyberYellow, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.7),
                       ),
-                      const SizedBox(height: 4),
-                      const Text(
+                      SizedBox(height: 4),
+                      Text(
                         "Le SNI est encore un autre paramètre : il ne change ni l’adresse de destination ni le Host HTTP. Pour une connexion TLS, renseigner un nom accepté par le serveur et son certificat.",
-                        style: TextStyle(color: Colors.white60, fontSize: 10, height: 1.35),
+                        style: TextStyle(color: _text60, fontSize: 10, height: 1.35),
                       ),
-                      const SizedBox(height: 10),
+                      SizedBox(height: 10),
                       _buildFormField("SNI TLS (domaine du certificat)", _customSniCtrl, "vpn.ton-domaine.com"),
                     ],
                   ),
                 ),
-                const SizedBox(height: 10),
+                SizedBox(height: 10),
 
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
@@ -3109,25 +3252,19 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                     setState(() => _customTlsEnabled = enabled);
                   },
                   activeTrackColor: cyberGreen,
-                  title: const Text('Sécurité TLS', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
-                  subtitle: Text(
-                    _customTlsEnabled && !{'native', 'raw', 'tcp', 'kcp', 'mkcp'}.contains(_customTransport)
-                        ? 'TLS activé : le serveur distant doit présenter un certificat valide et accepter ce SNI.'
-                        : 'TLS désactivé pour ce mode de transport.',
-                    style: const TextStyle(color: Colors.white54, fontSize: 10),
-                  ),
+                  title: Text('Sécurité TLS', style: TextStyle(color: _textPrimary, fontSize: 12, fontWeight: FontWeight.bold)),
                 ),
-                const SizedBox(height: 10),
+                SizedBox(height: 10),
 
                 Row(
                   children: [
                     Expanded(
                       child: _buildFormField("Chemin WebSocket / XHTTP", _customPathCtrl, "/@abess237"),
                     ),
-                    const Expanded(child: SizedBox()),
+                    Expanded(child: SizedBox()),
                   ],
                 ),
-                const SizedBox(height: 10),
+                SizedBox(height: 10),
 
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -3135,42 +3272,63 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text("Identifiant UUID / Mot de passe", style: TextStyle(color: Colors.white60, fontSize: 10)),
+                        Text("Identifiant UUID / Mot de passe", style: TextStyle(color: _text60, fontSize: 10)),
                         GestureDetector(
                           onTap: _generateRandomUuid,
-                          child: const Text("Générer UUID Aléatoire", style: TextStyle(color: cyberCyan, fontSize: 10, fontWeight: FontWeight.bold)),
+                          child: Text("Générer UUID Aléatoire", style: TextStyle(color: cyberCyan, fontSize: 10, fontWeight: FontWeight.bold)),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 4),
+                    SizedBox(height: 4),
                     TextField(
                       controller: _customUuidCtrl,
-                      style: const TextStyle(color: cyberCyan, fontFamily: "monospace", fontSize: 11),
+                      style: TextStyle(color: cyberCyan, fontFamily: "monospace", fontSize: 11),
                       decoration: InputDecoration(
                         filled: true,
-                        fillColor: const Color(0xFF030712),
+                        fillColor: _fieldBackgroundColor,
                         contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 14),
+                SizedBox(height: 14),
 
                 ElevatedButton.icon(
                   onPressed: _saveCustomServerManual,
-                  icon: const Icon(Icons.flash_on, color: Colors.black, size: 16),
-                  label: const Text("ACTIVER CE SERVEUR PERSONNEL", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 11)),
+                  icon: Icon(Icons.flash_on, color: Colors.black, size: 16),
+                  label: Text("ACTIVER CE SERVEUR PERSONNEL", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 11)),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: cyberCyan,
                     minimumSize: const Size.fromHeight(42),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
                 ),
+                SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _copyManualProfileLink,
+                        icon: Icon(Icons.link, size: 16),
+                        label: Text('ABESS://', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: _exportManualProfileFile,
+                        icon: Icon(Icons.file_download, size: 16),
+                        label: Text('.ABESS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                        style: ElevatedButton.styleFrom(backgroundColor: cyberGreen, foregroundColor: Colors.black),
+                      ),
+                    ),
+                  ],
+                ),
               ],
             ),
           ),
-          const SizedBox(height: 16),
+          SizedBox(height: 16),
 
           Container(
             width: double.infinity,
@@ -3178,32 +3336,32 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
             decoration: BoxDecoration(
               color: cyberCardBg,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white10),
+              border: Border.all(color: _text10),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text("IMPORTATION RAPIDE PAR LIEN BRUT", style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 4),
-                const Text("Collez un lien vless://, vmess://, trojan:// ou ss:// généré par un autre outil.", style: TextStyle(color: Colors.white54, fontSize: 10)),
-                const SizedBox(height: 10),
+                Text("IMPORTATION RAPIDE PAR LIEN BRUT", style: TextStyle(color: _text70, fontSize: 11, fontWeight: FontWeight.bold)),
+                SizedBox(height: 4),
+                Text("Collez un lien vless://, vmess://, trojan:// ou ss:// généré par un autre outil.", style: TextStyle(color: _text54, fontSize: 10)),
+                SizedBox(height: 10),
                 Row(
                   children: [
                     Expanded(
                       child: TextField(
                         controller: _rawLinkInputCtrl,
-                        style: const TextStyle(color: Colors.white, fontSize: 11, fontFamily: "monospace"),
+                        style: TextStyle(color: _textPrimary, fontSize: 11, fontFamily: "monospace"),
                         decoration: InputDecoration(
                           hintText: "Coller vless://... ou vmess://...",
-                          hintStyle: const TextStyle(color: Colors.white30, fontSize: 10),
+                          hintStyle: TextStyle(color: _text30, fontSize: 10),
                           filled: true,
-                          fillColor: const Color(0xFF030712),
+                          fillColor: _fieldBackgroundColor,
                           contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                         ),
                       ),
                     ),
-                    const SizedBox(width: 8),
+                    SizedBox(width: 8),
                     ElevatedButton(
                       onPressed: () {
                         if (_rawLinkInputCtrl.text.isNotEmpty) {
@@ -3211,12 +3369,12 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                         }
                       },
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.white24,
-                        foregroundColor: Colors.white,
+                        backgroundColor: _text24,
+                        foregroundColor: _textPrimary,
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                       ),
-                      child: const Text("IMPORTER", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                      child: Text("IMPORTER", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
                     ),
                   ],
                 ),
@@ -3228,10 +3386,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     );
   }
 
-  // ==========================================================================
-  // ONGLET 3 : OUTILS, STABILITÉ & LOGS EN DIRECT
-  // ==========================================================================
-  Widget _buildTab3ToolsAndStability(ImportedVpnServer? srv) {
+  Widget _buildTab4ToolsAndStability(ImportedVpnServer? srv) {
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       child: Column(
@@ -3251,11 +3406,11 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Row(
+                    Row(
                       children: [
                         Icon(Icons.speed, color: cyberCyan, size: 18),
                         SizedBox(width: 8),
-                        Text("SPEED TEST CYBER INTÉGRÉ", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                        Text("SPEED TEST CYBER INTÉGRÉ", style: TextStyle(color: _textPrimary, fontWeight: FontWeight.bold, fontSize: 13)),
                       ],
                     ),
                     ElevatedButton(
@@ -3267,16 +3422,16 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                         minimumSize: Size.zero,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
                       ),
-                      child: const Text("TESTER", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                      child: Text("TESTER", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
                     ),
                   ],
                 ),
-                const SizedBox(height: 6),
-                const Text("Mesure en direct la latence (ping) et le débit montant/descendant vers les serveurs maîtres.", style: TextStyle(color: Colors.white60, fontSize: 10)),
+                SizedBox(height: 6),
+                Text("Mesure en direct la latence (ping) et le débit montant/descendant vers les serveurs maîtres.", style: TextStyle(color: _text60, fontSize: 10)),
               ],
             ),
           ),
-          const SizedBox(height: 14),
+          SizedBox(height: 14),
 
           Container(
             width: double.infinity,
@@ -3284,46 +3439,46 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
             decoration: BoxDecoration(
               color: cyberCardBg,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white10),
+              border: Border.all(color: _text10),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text("PARAMÈTRES DE PERFORMANCE & STABILITÉ", style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 12),
+                Text("PARAMÈTRES DE PERFORMANCE & STABILITÉ", style: TextStyle(color: _text70, fontSize: 11, fontWeight: FontWeight.bold)),
+                SizedBox(height: 12),
 
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   value: _isMuxEnabled,
                   onChanged: (val) => setState(() => _isMuxEnabled = val),
                   activeTrackColor: cyberGreen,
-                  title: const Text("Multiplexage TCP (Mux)", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
-                  subtitle: const Text("Réutilise la même connexion TCP pour charger les pages 2x plus vite.", style: TextStyle(color: Colors.white54, fontSize: 10)),
+                  title: Text("Multiplexage TCP (Mux)", style: TextStyle(color: _textPrimary, fontSize: 12, fontWeight: FontWeight.bold)),
+                  subtitle: Text("Réutilise la même connexion TCP pour charger les pages 2x plus vite.", style: TextStyle(color: _text54, fontSize: 10)),
                 ),
-                const Divider(color: Colors.white12),
+                Divider(color: _text12),
 
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   value: isKillSwitchEnabled,
                   onChanged: (val) => setState(() => isKillSwitchEnabled = val),
                   activeTrackColor: cyberRed,
-                  title: const Text("Kill Switch Anti-Fuite", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
-                  subtitle: const Text("Coupe automatiquement le trafic si le tunnel VPN se déconnecte.", style: TextStyle(color: Colors.white54, fontSize: 10)),
+                  title: Text("Kill Switch Anti-Fuite", style: TextStyle(color: _textPrimary, fontSize: 12, fontWeight: FontWeight.bold)),
+                  subtitle: Text("Coupe automatiquement le trafic si le tunnel VPN se déconnecte.", style: TextStyle(color: _text54, fontSize: 10)),
                 ),
-                const Divider(color: Colors.white12),
+                Divider(color: _text12),
 
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   value: isAutoReconnectEnabled,
                   onChanged: (val) => setState(() => isAutoReconnectEnabled = val),
                   activeTrackColor: cyberYellow,
-                  title: const Text("Reconnexion Automatique", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
-                  subtitle: const Text("Tente de reconnecter le VPN automatiquement en cas de perte de réseau.", style: TextStyle(color: Colors.white54, fontSize: 10)),
+                  title: Text("Reconnexion Automatique", style: TextStyle(color: _textPrimary, fontSize: 12, fontWeight: FontWeight.bold)),
+                  subtitle: Text("Tente de reconnecter le VPN automatiquement en cas de perte de réseau.", style: TextStyle(color: _text54, fontSize: 10)),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 14),
+          SizedBox(height: 14),
 
           Container(
             width: double.infinity,
@@ -3331,7 +3486,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
             decoration: BoxDecoration(
               color: cyberCardBg,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white10),
+              border: Border.all(color: _text10),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -3339,40 +3494,40 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Row(
+                    Row(
                       children: [
                         Icon(Icons.terminal, color: cyberGreen, size: 14),
                         SizedBox(width: 4),
-                        Text("JOURNAL SYSTÈME V2RAY", style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold)),
+                        Text("JOURNAL SYSTÈME V2RAY", style: TextStyle(color: _text70, fontSize: 10, fontWeight: FontWeight.bold)),
                       ],
                     ),
                     GestureDetector(
                       onTap: () => setState(() => _logs.clear()),
-                      child: const Text("Effacer", style: TextStyle(color: Colors.white38, fontSize: 10)),
+                      child: Text("Effacer", style: TextStyle(color: _text38, fontSize: 10)),
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
+                SizedBox(height: 8),
                 Container(
                   height: 140,
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF030712),
+                    color: _fieldBackgroundColor,
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Colors.white12),
+                    border: Border.all(color: _text12),
                   ),
                   child: ListView.builder(
                     itemCount: _logs.length,
                     itemBuilder: (ctx, idx) => Text(
                       _logs[idx],
-                      style: const TextStyle(color: cyberGreen, fontSize: 9, fontFamily: "monospace"),
+                      style: TextStyle(color: cyberGreen, fontSize: 9, fontFamily: "monospace"),
                     ),
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 14),
+          SizedBox(height: 14),
 
           Container(
             width: double.infinity,
@@ -3386,33 +3541,33 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
               children: [
                 Row(
                   children: [
-                    const Icon(Icons.support_agent, color: cyberGreen, size: 28),
-                    const SizedBox(width: 12),
-                    const Expanded(
+                    Icon(Icons.support_agent, color: cyberGreen, size: 28),
+                    SizedBox(width: 12),
+                    Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text("ASSISTANCE TECHNIQUE DIRECTE", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                          Text("ASSISTANCE TECHNIQUE DIRECTE", style: TextStyle(color: _textPrimary, fontWeight: FontWeight.bold, fontSize: 12)),
                           SizedBox(height: 2),
-                          Text("WhatsApp : $_whatsappSupportPhone", style: TextStyle(color: Colors.white60, fontSize: 10)),
+                          Text("WhatsApp : $_whatsappSupportPhone", style: TextStyle(color: _text60, fontSize: 10)),
                         ],
                       ),
                     ),
                     ElevatedButton.icon(
                       onPressed: () => _openUrlSafe(_whatsappSupportUrl),
-                      icon: const Icon(Icons.chat, color: Colors.black, size: 14),
-                      label: const Text("CHAT", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 10)),
+                      icon: Icon(Icons.chat, color: Colors.black, size: 14),
+                      label: Text("CHAT", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 10)),
                       style: ElevatedButton.styleFrom(backgroundColor: cyberGreen),
                     ),
                   ],
                 ),
-                const SizedBox(height: 10),
+                SizedBox(height: 10),
                 OutlinedButton.icon(
                   onPressed: () => _openUrlSafe(_whatsappCommunityUrl),
-                  icon: const Icon(Icons.groups, color: cyberCyan, size: 16),
-                  label: const Text("REJOINDRE LA COMMUNAUTÉ WHATSAPP", style: TextStyle(color: cyberCyan, fontSize: 10, fontWeight: FontWeight.bold)),
+                  icon: Icon(Icons.groups, color: cyberCyan, size: 16),
+                  label: Text("REJOINDRE LA COMMUNAUTÉ WHATSAPP", style: TextStyle(color: cyberCyan, fontSize: 10, fontWeight: FontWeight.bold)),
                   style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: cyberCyan),
+                    side: BorderSide(color: cyberCyan),
                     minimumSize: const Size.fromHeight(36),
                   ),
                 ),
@@ -3452,15 +3607,15 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 8),
           decoration: BoxDecoration(
-            color: isSelected ? cyberCyan.withOpacity( 0.25) : const Color(0xFF030712),
+            color: isSelected ? cyberCyan.withOpacity( 0.25) : _fieldBackgroundColor,
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: isSelected ? cyberCyan : Colors.white12),
+            border: Border.all(color: isSelected ? cyberCyan : _text12),
           ),
           child: Center(
             child: Text(
               label.split(" ")[0],
               style: TextStyle(
-                color: isSelected ? cyberCyan : Colors.white60,
+                color: isSelected ? cyberCyan : _text60,
                 fontSize: 10,
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
               ),
@@ -3511,15 +3666,15 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 8),
           decoration: BoxDecoration(
-            color: isSelected ? cyberGreen.withOpacity( 0.25) : const Color(0xFF030712),
+            color: isSelected ? cyberGreen.withOpacity( 0.25) : _fieldBackgroundColor,
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: isSelected ? cyberGreen : Colors.white12),
+            border: Border.all(color: isSelected ? cyberGreen : _text12),
           ),
           child: Center(
             child: Text(
               label.split(" ")[0],
               style: TextStyle(
-                color: isSelected ? cyberGreen : Colors.white60,
+                color: isSelected ? cyberGreen : _text60,
                 fontSize: 10,
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
               ),
@@ -3534,18 +3689,18 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(color: Colors.white60, fontSize: 10)),
-        const SizedBox(height: 4),
+        Text(label, style: TextStyle(color: _text60, fontSize: 10)),
+        SizedBox(height: 4),
         TextField(
           controller: ctrl,
-          style: const TextStyle(color: Colors.white, fontSize: 11, fontFamily: "monospace"),
+          style: TextStyle(color: _textPrimary, fontSize: 11, fontFamily: "monospace"),
           decoration: InputDecoration(
             hintText: hint,
-            hintStyle: const TextStyle(color: Colors.white24, fontSize: 10),
+            hintStyle: TextStyle(color: _text24, fontSize: 10),
             filled: true,
-            fillColor: const Color(0xFF030712),
+            fillColor: _fieldBackgroundColor,
             contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Colors.white24)),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: _text24)),
           ),
         ),
       ],
