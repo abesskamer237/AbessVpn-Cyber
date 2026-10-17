@@ -352,6 +352,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
         case 'xhttp': return network.toLowerCase();
         case 'kcp':
         case 'mkcp': return 'kcp';
+        case 'native': return 'native';
         case 'splithttp': return 'xhttp';
         default: throw FormatException('Transport V2Ray non pris en charge : ' + network);
       }
@@ -384,7 +385,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
 
     try {
       if (link.startsWith('abess://profile.')) {
-        final encoded = link.substring('abess://profile.'.length).split(RegExp(r'[\\s#]')).first;
+        final encoded = link.substring('abess://profile.'.length).split(RegExp(r'[\s#]')).first;
         final decoded = jsonDecode(decodeB64(encoded));
         if (decoded is! Map) throw const FormatException('Fichier ABESS invalide.');
         final p = Map<String, dynamic>.from(decoded);
@@ -3199,10 +3200,6 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                         style: TextStyle(color: cyberCyan, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.7),
                       ),
                       SizedBox(height: 4),
-                      Text(
-                        "Champ distinct de l’adresse IP/domaine du serveur et du SNI TLS. Utilisé pour Host ou :authority avec WS, gRPC, HTTPUpgrade et XHTTP. Laisser vide pour reprendre l’adresse du serveur.",
-                        style: TextStyle(color: _text60, fontSize: 10, height: 1.35),
-                      ),
                       SizedBox(height: 10),
                       _buildFormField("Host HTTP / WebSocket (facultatif)", _customWsHostCtrl, "host.exemple.com"),
                     ],
@@ -3225,10 +3222,6 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                         style: TextStyle(color: cyberYellow, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.7),
                       ),
                       SizedBox(height: 4),
-                      Text(
-                        "Le SNI est encore un autre paramètre : il ne change ni l’adresse de destination ni le Host HTTP. Pour une connexion TLS, renseigner un nom accepté par le serveur et son certificat.",
-                        style: TextStyle(color: _text60, fontSize: 10, height: 1.35),
-                      ),
                       SizedBox(height: 10),
                       _buildFormField("SNI TLS (domaine du certificat)", _customSniCtrl, "vpn.ton-domaine.com"),
                     ],
