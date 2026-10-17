@@ -48,6 +48,7 @@ class ImportedVpnServer {
   final String? encryptedLink;
   final int deviceLimit;
   final String? allowedDeviceId;
+  final String? licenseId;
 
   ImportedVpnServer({
     String? id,
@@ -69,6 +70,7 @@ class ImportedVpnServer {
     this.encryptedLink,
     this.deviceLimit = 1,
     this.allowedDeviceId,
+    this.licenseId,
   }) : id = id ?? '${DateTime.now().microsecondsSinceEpoch}-${math.Random().nextInt(0x7fffffff)}';
 
   bool get isExpired => DateTime.now().isAfter(expiresAt);
@@ -425,7 +427,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                   setDialogState(() => validationError = 'Choisis une date et une heure futures.');
                   return;
                 }
-                if (deviceId.length < 8 || deviceId.length > 128 || RegExp(r'\\s').hasMatch(deviceId)) {
+                if (deviceId.length < 8 || deviceId.length > 128 || RegExp(r'\s').hasMatch(deviceId)) {
                   setDialogState(() => validationError = 'L’ID doit contenir 8 à 128 caractères sans espace.');
                   return;
                 }
@@ -544,7 +546,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
       required String transport, required bool tls,
       String path = '/@abess237', String sni = '',
       String method = 'aes-128-gcm', String wsHost = '',
-      double bandwidthGb = 50.0, DateTime? expiresAt, String allowedDeviceId = '',
+      double bandwidthGb = 50.0, DateTime? expiresAt, String allowedDeviceId = '', String licenseId = '',
     }) {
       if (host.isEmpty || port < 1 || port > 65535 || passwordOrUuid.isEmpty) {
         throw FormatException('Le lien ne contient pas un hôte, port ou identifiant valide.');
@@ -571,6 +573,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
         bandwidthGb: bandwidthGb, bandwidthUsedGb: 0.0,
         expiresAt: validExpiry, token: 'RAW-LINK-IMPORT',
         allowedDeviceId: expectedDeviceId.isEmpty ? null : expectedDeviceId,
+        licenseId: licenseId.isEmpty ? null : licenseId,
       );
       unawaited(_storeAndSelectServer(server));
       _showToast('Lien ' + protocol + ' / ' + transport + ' importé.');
@@ -587,6 +590,10 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
         final allowedDeviceId = (p['allowedDeviceId'] ?? '').toString().trim();
         if (version >= 2 && allowedDeviceId.isEmpty) {
           throw const FormatException('Ce lien limité ne contient pas d’ID d’installation autorisé.');
+        }
+        final licenseId = (p['licenseId'] ?? '').toString().trim();
+        if (version >= 2 && licenseId.isEmpty) {
+          throw const FormatException('Identifiant de licence ABESS manquant.');
         }
         final expiryText = p['expiresAt']?.toString();
         final expiry = expiryText == null ? null : DateTime.tryParse(expiryText);
@@ -608,6 +615,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
           bandwidthGb: quota,
           expiresAt: expiry,
           allowedDeviceId: allowedDeviceId,
+          licenseId: licenseId,
         );
         return;
       }
@@ -766,8 +774,9 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     final prefs = await SharedPreferences.getInstance();
     var id = prefs.getString('abess_device_id');
     if (id == null) {
-      final rand = math.Random().nextInt(899999) + 100000;
-      id = 'HWID-PHONE-CYBER-$rand';
+      final rand = math.Random.secure();
+      final fingerprint = List.generate(24, (_) => rand.nextInt(16).toRadixString(16)).join().toUpperCase();
+      id = 'ABESS-INST-$fingerprint';
       await prefs.setString('abess_device_id', id);
     }
     if (mounted) {
@@ -867,6 +876,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     'encryptedLink': server.encryptedLink,
     'deviceLimit': server.deviceLimit,
     'allowedDeviceId': server.allowedDeviceId,
+    'licenseId': server.licenseId,
     'protocol': server.protocol,
     'transport': server.transport,
     'tls': server.tls,
@@ -890,6 +900,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     encryptedLink: map['encryptedLink']?.toString(),
     deviceLimit: (map['deviceLimit'] as num?)?.toInt() ?? 1,
     allowedDeviceId: map['allowedDeviceId']?.toString(),
+    licenseId: map['licenseId']?.toString(),
     protocol: map['protocol']?.toString() ?? 'vless',
     transport: map['transport']?.toString() ?? 'ws',
     tls: map['tls'] as bool? ?? true,
@@ -898,6 +909,8 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
   );
 
   String _profileIdentityKey(ImportedVpnServer server) {
+    final licenseId = server.licenseId?.trim();
+    if (licenseId != null && licenseId.isNotEmpty) return 'manual-license:$licenseId';
     final token = server.token?.trim();
     if (token != null && token.isNotEmpty &&
         token != 'CUSTOM-ZERO-TOKEN' && token != 'RAW-LINK-IMPORT') {
@@ -986,9 +999,15 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     final identity = _profileIdentityKey(server);
     final existingIndex = savedServers.indexWhere((item) =>
         item.id == server.id || _profileIdentityKey(item) == identity);
-    final storedServer = existingIndex >= 0
-        ? _serverFromJsonMap({..._serverToJsonMap(server), 'id': savedServers[existingIndex].id})
-        : server;
+    final storedMap = _serverToJsonMap(server);
+    if (existingIndex >= 0) {
+      final previous = savedServers[existingIndex];
+      storedMap['id'] = previous.id;
+      if (server.licenseId != null && server.licenseId == previous.licenseId) {
+        storedMap['bandwidthUsedGb'] = math.max(server.bandwidthUsedGb, previous.bandwidthUsedGb);
+      }
+    }
+    final storedServer = existingIndex >= 0 ? _serverFromJsonMap(storedMap) : server;
     final next = List<ImportedVpnServer>.from(savedServers);
     if (existingIndex >= 0) {
       next[existingIndex] = storedServer;
@@ -2031,6 +2050,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
               uuid: srvConf['uuid']?.toString() ?? '',
               protocol: (srvConf['protocol'] as String?) ?? 'vless',
               transport: (srvConf['transport'] as String?) ?? 'ws',
+              allowedDeviceId: srvConf['allowedDeviceId']?.toString(),
               tls: (srvConf['security']?.toString().toLowerCase() ?? 'tls') != 'none',
               method: (srvConf['method'] as String?) ?? 'aes-128-gcm',
               wsHost: (srvConf['host'] ?? srvConf['wsHost'])?.toString() ?? '',
@@ -2162,6 +2182,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
             uuid: srvConf['uuid']?.toString() ?? '',
             protocol: srvConf['protocol']?.toString() ?? 'vless',
             transport: srvConf['transport']?.toString() ?? 'ws',
+            allowedDeviceId: srvConf['allowedDeviceId']?.toString(),
             tls: (srvConf['security']?.toString().toLowerCase() ?? 'tls') != 'none',
             method: srvConf['method']?.toString() ?? 'aes-128-gcm',
             wsHost: (srvConf['host'] ?? srvConf['wsHost'])?.toString() ?? '',
@@ -2331,6 +2352,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                         uuid: srvConf['uuid']?.toString() ?? '',
                         protocol: srvConf['protocol']?.toString() ?? 'vless',
                         transport: srvConf['transport']?.toString() ?? 'ws',
+            allowedDeviceId: srvConf['allowedDeviceId']?.toString(),
                         tls: (srvConf['security']?.toString().toLowerCase() ?? 'tls') != 'none',
                         method: srvConf['method']?.toString() ?? 'aes-128-gcm',
                         wsHost: (srvConf['host'] ?? srvConf['wsHost'])?.toString() ?? '',
