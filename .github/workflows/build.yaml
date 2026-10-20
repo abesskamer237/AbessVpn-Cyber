@@ -88,7 +88,11 @@ jobs:
             echo "VPN_DOMAIN must be a hostname only (no scheme, port, or path)." >&2
             exit 1
           fi
+          # Obfuscate Dart symbols in the distributed APK. Keep symbols in the
+          # runner workspace for private diagnostics; never publish them as an artifact.
           flutter build apk --release --no-tree-shake-icons \
+            --obfuscate \
+            --split-debug-info=build/private-symbols/abess-vpn \
             --dart-define="ABESS_API_BASE_URL=https://$VPN_DOMAIN"
 
       - uses: actions/upload-artifact@v4
