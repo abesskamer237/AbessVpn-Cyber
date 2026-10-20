@@ -1,4 +1,4 @@
-name: Build APK Release (68MB Universal)
+name: Build ABESS VPN (CI and signed APK)
 
 on:
   push:
@@ -77,12 +77,36 @@ jobs:
       - name: Generate launcher icons
         run: dart run flutter_launcher_icons
 
-      - name: Build Universal Fat APK (~68MB Full Architecture)
+      - name: Configure persistent Android release signing
+        if: github.event_name != 'pull_request'
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${ANDROID_KEYSTORE_BASE64:?Missing GitHub secret ANDROID_KEYSTORE_BASE64}"
+          : "${ANDROID_STORE_PASSWORD:?Missing GitHub secret ANDROID_STORE_PASSWORD}"
+          : "${ANDROID_KEY_ALIAS:?Missing GitHub secret ANDROID_KEY_ALIAS}"
+          : "${ANDROID_KEY_PASSWORD:?Missing GitHub secret ANDROID_KEY_PASSWORD}"
+          KEYSTORE_PATH="$RUNNER_TEMP/abess-release.jks"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
+          test -s "$KEYSTORE_PATH"
+          chmod 600 "$KEYSTORE_PATH"
+          keytool -list -keystore "$KEYSTORE_PATH" -storepass "$ANDROID_STORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" >/dev/null
+          echo "ANDROID_KEYSTORE_PATH=$KEYSTORE_PATH" >> "$GITHUB_ENV"
+
+      - name: Build APK (debug for pull requests, persistently signed release otherwise)
         shell: bash
         env:
           VPN_DOMAIN: ${{ vars.VPN_DOMAIN }}
           RELEASE_TAG: ${{ github.ref_name }}
           REF_TYPE: ${{ github.ref_type }}
+          ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           set -euo pipefail
           if [ -z "${VPN_DOMAIN:-}" ]; then
@@ -110,15 +134,27 @@ jobs:
               exit 1
             fi
           fi
-          flutter build apk --release --no-tree-shake-icons \
-            --build-name="$VERSION_NAME" --build-number="$VERSION_CODE" \
-            --obfuscate \
-            --split-debug-info=build/private-symbols/abess-vpn \
-            --dart-define="ABESS_API_BASE_URL=https://$VPN_DOMAIN"
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            # Pull requests (including forks without access to secrets) only need a compile check.
+            # This debug APK is not an official release and must not be distributed as an update.
+            flutter build apk --debug --no-tree-shake-icons \
+              --build-name="$VERSION_NAME" --build-number="$VERSION_CODE" \
+              --dart-define="ABESS_API_BASE_URL=https://$VPN_DOMAIN"
+          else
+            if [ -z "${ANDROID_KEYSTORE_PATH:-}" ] || [ ! -s "$ANDROID_KEYSTORE_PATH" ]; then
+              echo "Persistent Android release keystore is not configured." >&2
+              exit 1
+            fi
+            flutter build apk --release --no-tree-shake-icons \
+              --build-name="$VERSION_NAME" --build-number="$VERSION_CODE" \
+              --obfuscate \
+              --split-debug-info=build/private-symbols/abess-vpn \
+              --dart-define="ABESS_API_BASE_URL=https://$VPN_DOMAIN"
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
-          name: abess-vpn-release
-          path: build/app/outputs/flutter-apk/app-release.apk
+          name: abess-vpn-${{ github.event_name == 'pull_request' && 'debug-pr' || 'release-signed' }}
+          path: build/app/outputs/flutter-apk/app-*.apk
           if-no-files-found: error
 
