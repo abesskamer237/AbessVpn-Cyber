@@ -1,0 +1,105 @@
+name: Publish ABESS VPN Android Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Version tag to publish (example: v2.1.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: "17"
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.22.3"
+          channel: stable
+          cache: true
+
+      - name: Validate release version and API domain
+        env:
+          VPN_DOMAIN: ${{ vars.VPN_DOMAIN }}
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ ]] || { echo "Use a version tag like v2.1.0"; exit 1; }
+          [[ "$VPN_DOMAIN" =~ ^[A-Za-z0-9.-]+$ ]] || { echo "Set repository variable VPN_DOMAIN to a hostname only."; exit 1; }
+
+      - name: Prepare Android project
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -f android/app/build.gradle ] && [ ! -f android/app/build.gradle.kts ]; then
+            flutter create . --org com.abessvpn --project-name abess_vpn --platforms=android
+          fi
+          if [ ! -f android/gradlew ] || [ ! -f android/gradle/wrapper/gradle-wrapper.jar ]; then
+            tmp_dir="$(mktemp -d)"
+            flutter create --no-pub --org com.abessvpn --project-name abess_wrapper_seed --platforms=android "$tmp_dir/seed"
+            mkdir -p android/gradle/wrapper
+            cp "$tmp_dir/seed/android/gradlew" android/gradlew
+            cp "$tmp_dir/seed/android/gradlew.bat" android/gradlew.bat
+            cp "$tmp_dir/seed/android/gradle/wrapper/gradle-wrapper.jar" android/gradle/wrapper/gradle-wrapper.jar
+            [ -f android/gradle/wrapper/gradle-wrapper.properties ] || cp "$tmp_dir/seed/android/gradle/wrapper/gradle-wrapper.properties" android/gradle/wrapper/gradle-wrapper.properties
+            chmod +x android/gradlew
+            rm -rf "$tmp_dir"
+          fi
+          if [ -f android/app/build.gradle ]; then
+            sed -i "s/minSdkVersion.*/minSdkVersion 21/" android/app/build.gradle || true
+            sed -i "s/minSdk .*/minSdk 21/" android/app/build.gradle || true
+          fi
+          if [ -f android/app/build.gradle.kts ]; then
+            sed -i "s/minSdk = flutter.minSdkVersion/minSdk = 21/" android/app/build.gradle.kts || true
+          fi
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Prepare app icon
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y librsvg2-bin
+          rsvg-convert -w 1024 -h 1024 assets/abess_vpn_logo.svg -o assets/abess_vpn_logo.png
+          dart run flutter_launcher_icons
+
+      - name: Build signed-by-Android release APK
+        env:
+          VPN_DOMAIN: ${{ vars.VPN_DOMAIN }}
+        run: |
+          set -euo pipefail
+          flutter build apk --release --no-tree-shake-icons --obfuscate \
+            --split-debug-info=build/private-symbols/abess-vpn \
+            --dart-define="ABESS_API_BASE_URL=https://$VPN_DOMAIN"
+
+      - name: Prepare release asset
+        env:
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: cp build/app/outputs/flutter-apk/app-release.apk "ABESS-VPN-${RELEASE_TAG}.apk"
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: |
+          gh release view "$RELEASE_TAG" >/dev/null 2>&1 || gh release create "$RELEASE_TAG" --title "ABESS VPN $RELEASE_TAG" --notes "Version Android ABESS VPN. Vérifiez les notes et installez uniquement les APK provenant du dépôt officiel."
+          gh release upload "$RELEASE_TAG" "ABESS-VPN-${RELEASE_TAG}.apk" --clobber
