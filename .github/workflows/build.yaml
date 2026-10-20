@@ -66,14 +66,14 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Run Flutter tests
-        run: flutter test --no-pub
-
       - name: Render VPN logo PNG from SVG
         run: |
           sudo apt-get update
           sudo apt-get install -y librsvg2-bin
           rsvg-convert -w 1024 -h 1024 assets/abess_vpn_logo.svg -o assets/abess_vpn_logo.png
+
+      - name: Run Flutter tests
+        run: flutter test --no-pub
 
       - name: Generate launcher icons
         run: dart run flutter_launcher_icons
