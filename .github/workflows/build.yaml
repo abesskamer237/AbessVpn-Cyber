@@ -66,6 +66,9 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Run Flutter tests
+        run: flutter test --no-pub
+
       - name: Render VPN logo PNG from SVG
         run: |
           sudo apt-get update
@@ -93,7 +96,13 @@ jobs:
           fi
           # Obfuscate Dart symbols in the distributed APK. Keep symbols in the
           # runner workspace for private diagnostics; never publish them as an artifact.
-          VERSION_NAME="2.0.0"
+          # Use the version declared by the Flutter project instead of a stale
+          # hard-coded value, so the installed APK reports the correct release.
+          VERSION_NAME="$(sed -n 's/^version: *\([0-9][^+ ]*\).*/\1/p' pubspec.yaml | head -n1)"
+          if [ -z "$VERSION_NAME" ]; then
+            echo "Unable to read the app version from pubspec.yaml." >&2
+            exit 1
+          fi
           VERSION_CODE="${GITHUB_RUN_NUMBER}"
           if [[ "${REF_TYPE}" == "tag" ]]; then
             VERSION_NAME="${RELEASE_TAG#v}"
