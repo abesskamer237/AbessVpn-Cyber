@@ -34,6 +34,8 @@ class ImportedVpnServer {
   final String address;
   final int port;
   final String path;
+  /// HTTP Host/:authority header, independent from destination address and TLS SNI.
+  final String host;
   final String sni;
   final String uuid;
   final String protocol;
@@ -56,6 +58,7 @@ class ImportedVpnServer {
     required this.address,
     required this.port,
     required this.path,
+    this.host = '',
     required this.sni,
     required this.uuid,
     this.protocol = 'vless',
@@ -2197,6 +2200,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
             address: srvConf['address']?.toString() ?? '',
             port: (srvConf['port'] as num?)?.toInt() ?? 443,
             path: srvConf['path']?.toString() ?? '/@abess237',
+            host: (srvConf['host'] ?? srvConf['wsHost'] ?? '').toString(),
             sni: srvConf['sni']?.toString() ?? '',
             uuid: srvConf['uuid']?.toString() ?? '',
             protocol: srvConf['protocol']?.toString() ?? 'vless',
