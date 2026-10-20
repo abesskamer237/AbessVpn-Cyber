@@ -3,6 +3,7 @@ name: Build APK Release (68MB Universal)
 on:
   push:
     branches: [ main ]
+    tags: ['v*']
   pull_request:
     branches: [ main ]
   workflow_dispatch:
@@ -78,6 +79,8 @@ jobs:
         shell: bash
         env:
           VPN_DOMAIN: ${{ vars.VPN_DOMAIN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
         run: |
           set -euo pipefail
           if [ -z "${VPN_DOMAIN:-}" ]; then
@@ -90,7 +93,17 @@ jobs:
           fi
           # Obfuscate Dart symbols in the distributed APK. Keep symbols in the
           # runner workspace for private diagnostics; never publish them as an artifact.
+          VERSION_NAME="2.0.0"
+          VERSION_CODE="${GITHUB_RUN_NUMBER}"
+          if [[ "${REF_TYPE}" == "tag" ]]; then
+            VERSION_NAME="${RELEASE_TAG#v}"
+            if ! [[ "$VERSION_NAME" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+              echo "Release tag must look like v2.1.0" >&2
+              exit 1
+            fi
+          fi
           flutter build apk --release --no-tree-shake-icons \
+            --build-name="$VERSION_NAME" --build-number="$VERSION_CODE" \
             --obfuscate \
             --split-debug-info=build/private-symbols/abess-vpn \
             --dart-define="ABESS_API_BASE_URL=https://$VPN_DOMAIN"
@@ -100,3 +113,11 @@ jobs:
           name: abess-vpn-release
           path: build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
+
+      - name: Publish GitHub Release with APK
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ABESS VPN ${{ github.ref_name }}
+          generate_release_notes: true
+          files: build/app/outputs/flutter-apk/app-release.apk
