@@ -8,6 +8,7 @@ import 'package:flutter_v2ray/flutter_v2ray.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -749,6 +750,88 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     _initV2Ray();
     _loadSavedServer();
     _measureRealPing();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkForAppUpdate());
+  }
+
+  bool _updateDialogShown = false;
+
+  Future<void> _checkForAppUpdate({bool showUpToDate = false}) async {
+    try {
+      final current = await PackageInfo.fromPlatform();
+      final response = await http.get(
+        Uri.parse('https://api.github.com/repos/abesskamer237/AbessVpn-Cyber/releases/latest'),
+        headers: const {'Accept': 'application/vnd.github+json'},
+      ).timeout(const Duration(seconds: 8));
+      if (response.statusCode != 200) {
+        if (showUpToDate && mounted) _showToast('Vérification des mises à jour indisponible.');
+        return;
+      }
+      final release = jsonDecode(response.body) as Map<String, dynamic>;
+      final latest = (release['tag_name'] ?? '').toString().replaceFirst(RegExp(r'^v'), '').split('+').first;
+      final installed = current.version.split('+').first;
+      int compare(String a, String b) {
+        final aa = a.split('.').map((v) => int.tryParse(v) ?? 0).toList();
+        final bb = b.split('.').map((v) => int.tryParse(v) ?? 0).toList();
+        for (var i = 0; i < math.max(aa.length, bb.length); i++) {
+          final x = i < aa.length ? aa[i] : 0;
+          final y = i < bb.length ? bb[i] : 0;
+          if (x != y) return x.compareTo(y);
+        }
+        return 0;
+      }
+      if (compare(latest, installed) <= 0) {
+        if (showUpToDate && mounted) _showToast('ABESS VPN est déjà à jour.');
+        return;
+      }
+      if (!mounted || _updateDialogShown) return;
+      final assets = (release['assets'] as List<dynamic>? ?? const []);
+      final apks = assets.whereType<Map<String, dynamic>>().where((a) =>
+        (a['name'] ?? '').toString().toLowerCase().endsWith('.apk')).toList();
+      if (apks.isEmpty) return;
+      final downloadUrl = (apks.first['browser_download_url'] ?? '').toString();
+      if (downloadUrl.isEmpty) return;
+      _updateDialogShown = true;
+      final notes = (release['body'] ?? 'Corrections et améliorations disponibles.').toString().trim();
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => AlertDialog(
+          backgroundColor: cyberCardBg,
+          title: const Row(children: [
+            Icon(Icons.system_update_alt, color: cyberGreen),
+            SizedBox(width: 8),
+            Expanded(child: Text('Mise à jour disponible')),
+          ]),
+          content: SingleChildScrollView(child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Version installée : ${current.version}'),
+              const SizedBox(height: 4),
+              Text('Nouvelle version : $latest', style: const TextStyle(color: cyberGreen, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 12),
+              Text(notes.isEmpty ? 'Améliorations et corrections.' : notes),
+              const SizedBox(height: 10),
+              const Text('Le navigateur téléchargera l’APK. Android demandera ensuite de confirmer son installation.', style: TextStyle(fontSize: 11)),
+            ],
+          )),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('Plus tard')),
+            FilledButton.icon(
+              onPressed: () async {
+                Navigator.of(dialogContext).pop();
+                final uri = Uri.tryParse(downloadUrl);
+                if (uri != null) await launchUrl(uri, mode: LaunchMode.externalApplication);
+              },
+              icon: const Icon(Icons.download),
+              label: const Text('Télécharger'),
+            ),
+          ],
+        ),
+      );
+    } catch (_) {
+      if (showUpToDate && mounted) _showToast('Impossible de vérifier les mises à jour pour le moment.');
+    }
   }
 
   @override
