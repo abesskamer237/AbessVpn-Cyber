@@ -2,12 +2,13 @@ name: Publish ABESS VPN Android Release
 
 on:
   push:
+    branches: [ main ]
     tags:
       - "v*"
   workflow_dispatch:
     inputs:
       tag:
-        description: "Version tag to publish (example: v2.1.0)"
+        description: "Version tag to publish (example: v2.1.0; leave the tag on the selected ref)"
         required: true
         type: string
 
@@ -23,13 +24,53 @@ jobs:
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
 
+      - name: Resolve release tag
+        id: release
+        env:
+          RELEASE_TAG_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || (github.ref_type == 'tag' && github.ref_name) || '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${RELEASE_TAG_INPUT:-}" ]; then
+            RELEASE_TAG="$RELEASE_TAG_INPUT"
+          else
+            VERSION_NAME="$(sed -n 's/^version: *\([0-9][^+ ]*\).*/\1/p' pubspec.yaml | head -n1)"
+            if [ -z "$VERSION_NAME" ]; then
+              echo "Unable to read the app version from pubspec.yaml." >&2
+              exit 1
+            fi
+            RELEASE_TAG="v$VERSION_NAME"
+          fi
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]] || {
+            echo "Use a version tag like v2.1.0." >&2
+            exit 1
+          }
+          echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Avoid republishing an unchanged main version
+        id: guard
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          IS_MAIN_PUSH: ${{ github.event_name == 'push' && github.ref_type == 'branch' && github.ref_name == 'main' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "publish=true" >> "$GITHUB_OUTPUT"
+          if [ "$IS_MAIN_PUSH" = "true" ] && gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists; a normal main push must not overwrite a published APK."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Set up Java
+        if: steps.guard.outputs.publish == 'true'
         uses: actions/setup-java@v4
         with:
           distribution: zulu
           java-version: "17"
 
       - name: Set up Flutter
+        if: steps.guard.outputs.publish == 'true'
         uses: subosito/flutter-action@v2
         with:
           flutter-version: "3.22.3"
@@ -37,16 +78,18 @@ jobs:
           cache: true
 
       - name: Validate release version and API domain
+        if: steps.guard.outputs.publish == 'true'
         env:
           VPN_DOMAIN: ${{ vars.VPN_DOMAIN }}
-          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
         shell: bash
         run: |
           set -euo pipefail
-          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ ]] || { echo "Use a version tag like v2.1.0"; exit 1; }
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]] || { echo "Use a version tag like v2.1.0"; exit 1; }
           [[ "$VPN_DOMAIN" =~ ^[A-Za-z0-9.-]+$ ]] || { echo "Set repository variable VPN_DOMAIN to a hostname only."; exit 1; }
 
       - name: Prepare Android project
+        if: steps.guard.outputs.publish == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -73,33 +116,64 @@ jobs:
           fi
 
       - name: Install dependencies
+        if: steps.guard.outputs.publish == 'true'
         run: flutter pub get
 
       - name: Prepare app icon
+        if: steps.guard.outputs.publish == 'true'
         run: |
+          set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y librsvg2-bin
           rsvg-convert -w 1024 -h 1024 assets/abess_vpn_logo.svg -o assets/abess_vpn_logo.png
-          dart run flutter_launcher_icons
 
-      - name: Build signed-by-Android release APK
+      - name: Run Flutter tests
+        if: steps.guard.outputs.publish == 'true'
+        run: flutter test --no-pub
+
+      - name: Generate launcher icons
+        if: steps.guard.outputs.publish == 'true'
+        run: dart run flutter_launcher_icons
+
+      - name: Build release APK
+        if: steps.guard.outputs.publish == 'true'
         env:
           VPN_DOMAIN: ${{ vars.VPN_DOMAIN }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        shell: bash
         run: |
           set -euo pipefail
-          flutter build apk --release --no-tree-shake-icons --obfuscate \
+          VERSION_NAME="${RELEASE_TAG#v}"
+          flutter build apk --release --no-tree-shake-icons \
+            --build-name="$VERSION_NAME" --build-number="$GITHUB_RUN_NUMBER" \
+            --obfuscate \
             --split-debug-info=build/private-symbols/abess-vpn \
             --dart-define="ABESS_API_BASE_URL=https://$VPN_DOMAIN"
 
       - name: Prepare release asset
+        if: steps.guard.outputs.publish == 'true'
         env:
-          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
         run: cp build/app/outputs/flutter-apk/app-release.apk "ABESS-VPN-${RELEASE_TAG}.apk"
 
       - name: Publish GitHub Release
+        if: steps.guard.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          IS_MAIN_PUSH: ${{ github.event_name == 'push' && github.ref_type == 'branch' && github.ref_name == 'main' }}
+        shell: bash
         run: |
-          gh release view "$RELEASE_TAG" >/dev/null 2>&1 || gh release create "$RELEASE_TAG" --title "ABESS VPN $RELEASE_TAG" --notes "Version Android ABESS VPN. Vérifiez les notes et installez uniquement les APK provenant du dépôt officiel."
-          gh release upload "$RELEASE_TAG" "ABESS-VPN-${RELEASE_TAG}.apk" --clobber
+          set -euo pipefail
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            if [ "$IS_MAIN_PUSH" = "true" ]; then
+              gh release create "$RELEASE_TAG" --target "$GITHUB_SHA" \
+                --title "ABESS VPN $RELEASE_TAG" \
+                --notes "Version Android ABESS VPN. Les tests Flutter et la compilation APK ont réussi sur ce commit. Installez uniquement les APK provenant du dépôt officiel."
+            else
+              gh release create "$RELEASE_TAG" \
+                --title "ABESS VPN $RELEASE_TAG" \
+                --notes "Version Android ABESS VPN. Les tests Flutter et la compilation APK ont réussi sur ce commit. Installez uniquement les APK provenant du dépôt officiel."
+            fi
+          fi
+          gh release upload "$RELEASE_TAG" "ABESS-VPN-$RELEASE_TAG.apk" --clobber
