@@ -2056,7 +2056,6 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
               allowedDeviceId: srvConf['allowedDeviceId']?.toString(),
               tls: (srvConf['security']?.toString().toLowerCase() ?? 'tls') != 'none',
               method: (srvConf['method'] as String?) ?? 'aes-128-gcm',
-              wsHost: (srvConf['host'] ?? srvConf['wsHost'])?.toString() ?? '',
               bandwidthGb: (data['bandwidthGb'] as num?)?.toDouble() ?? 10.0,
               bandwidthUsedGb: (data['bandwidthUsedGb'] as num?)?.toDouble() ?? 0.0,
               expiresAt: DateTime.tryParse(data['expiresAt'] ?? '') ?? DateTime.now().add(Duration(days: 30)),
@@ -2207,7 +2206,6 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
             allowedDeviceId: srvConf['allowedDeviceId']?.toString(),
             tls: (srvConf['security']?.toString().toLowerCase() ?? 'tls') != 'none',
             method: srvConf['method']?.toString() ?? 'aes-128-gcm',
-            wsHost: (srvConf['host'] ?? srvConf['wsHost'])?.toString() ?? '',
             bandwidthGb: (data['bandwidthGb'] as num?)?.toDouble() ?? 0.0,
             bandwidthUsedGb: (data['bandwidthUsedGb'] as num?)?.toDouble() ?? 0.0,
             expiresAt: DateTime.tryParse(data['expiresAt']?.toString() ?? '')
