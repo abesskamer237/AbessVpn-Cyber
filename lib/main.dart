@@ -724,6 +724,8 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
   static const String _whatsappCommunityUrl = 'https://chat.whatsapp.com/IR0pjvSbTvL0Wp4YlbCjhF';
   static const String _whatsappSupportUrl = 'https://wa.me/237695140419?text=Bonjour%20AbessVpn%2C%20j%27ai%20besoin%20d%27assistance%20technique%20pour%20mon%20accès%20VPN';
   static const String _whatsappSupportPhone = '+237 695 14 04 19';
+  static const String _telegramChannelUrl = 'https://t.me/Abess_Vpn';
+  static const String _telegramSupportUrl = 'https://t.me/abess237';
 
   // Journal des logs
   final List<String> _logs = [];
@@ -2101,7 +2103,110 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     };
   }
 
-  // 1. IMPORTATION PAR CLÉ TOKEN
+
+  void _showDeviceLimitDialog(String token, String errorMsg) {
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: cyberCardBg,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: cyberRed, width: 1.2),
+        ),
+        title: Row(
+          children: [
+            Icon(Icons.devices, color: cyberRed, size: 22),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'LIMITE D\'APPAREILS ATTEINTE',
+                style: TextStyle(color: cyberRed, fontWeight: FontWeight.bold, fontSize: 14),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              errorMsg,
+              style: TextStyle(color: _text70, fontSize: 12),
+            ),
+            SizedBox(height: 12),
+            Container(
+              padding: EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: _fieldBackgroundColor,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: cyberCyan.withOpacity(0.3)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text("VOTRE IDENTIFIANT APPAREIL (HWID) :", style: TextStyle(color: cyberCyan, fontSize: 9, fontWeight: FontWeight.bold)),
+                  SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _deviceId,
+                          style: TextStyle(color: _textPrimary, fontSize: 11, fontFamily: 'monospace'),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () {
+                          Clipboard.setData(ClipboardData(text: _deviceId));
+                          _showToast("Identifiant appareil copié !");
+                        },
+                        icon: Icon(Icons.copy, color: cyberGreen, size: 16),
+                        tooltip: "Copier mon ID",
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(height: 8),
+            Text(
+              "Si vous avez changé de téléphone, demandez à votre revendeur ou au support de réinitialiser vos appareils.",
+              style: TextStyle(color: _text54, fontSize: 10, fontStyle: FontStyle.italic),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('FERMER', style: TextStyle(color: _text60)),
+          ),
+          ElevatedButton.icon(
+            onPressed: () {
+              Navigator.pop(ctx);
+              final msg = Uri.encodeComponent("Bonjour, mon token $token a atteint sa limite d\'appareils suite à un changement de téléphone. Mon HWID est: $_deviceId. Pourriez-vous réinitialiser mes appareils ?");
+              _openUrlSafe("https://wa.me/237695140419?text=$msg");
+            },
+            icon: Icon(Icons.chat, color: Colors.black, size: 14),
+            label: Text('WHATSAPP', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 10)),
+            style: ElevatedButton.styleFrom(backgroundColor: cyberGreen),
+          ),
+          ElevatedButton.icon(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _openUrlSafe(_telegramSupportUrl);
+            },
+            icon: Icon(Icons.send, color: Colors.black, size: 14),
+            label: Text('TELEGRAM', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 10)),
+            style: ElevatedButton.styleFrom(backgroundColor: cyberCyan),
+          ),
+        ],
+      ),
+    );
+  }
+
+    // 1. IMPORTATION PAR CLÉ TOKEN
   Future<void> _importServerByToken(String tokenCode, {bool silent = false}) async {
     final cleanToken = tokenCode.trim().toUpperCase();
     if (cleanToken.isEmpty) {
@@ -2161,7 +2266,9 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
         } else if (res.statusCode == 403) {
           final data = jsonDecode(res.body);
           _addLog('REFUS SERVEUR: ${data['error']}');
-          if (mounted) {
+          if (data is Map && data['status'] == 'device_limit_exceeded') {
+            _showDeviceLimitDialog(cleanToken, data['error']?.toString() ?? 'Limite d\'appareils atteinte.');
+          } else if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${data['error']}')));
           }
           return;
@@ -2827,6 +2934,11 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
           ],
         ),
         actions: [
+          IconButton(
+            onPressed: () => _openUrlSafe(_telegramChannelUrl),
+            icon: Icon(Icons.send_rounded, color: cyberCyan),
+            tooltip: "Canal Telegram Officiel (@Abess_Vpn)",
+          ),
           IconButton(
             onPressed: () => _openUrlSafe(_whatsappSupportUrl),
             icon: Icon(Icons.chat_bubble_outline, color: cyberGreen),
@@ -3971,6 +4083,16 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
                   label: Text("REJOINDRE LA COMMUNAUTÉ WHATSAPP", style: TextStyle(color: cyberCyan, fontSize: 10, fontWeight: FontWeight.bold)),
                   style: OutlinedButton.styleFrom(
                     side: BorderSide(color: cyberCyan),
+                    minimumSize: const Size.fromHeight(36),
+                  ),
+                ),
+                SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: () => _openUrlSafe(_telegramChannelUrl),
+                  icon: Icon(Icons.send_rounded, color: cyberGreen, size: 16),
+                  label: Text("REJOINDRE LE CANAL TELEGRAM (@Abess_Vpn)", style: TextStyle(color: cyberGreen, fontSize: 10, fontWeight: FontWeight.bold)),
+                  style: OutlinedButton.styleFrom(
+                    side: BorderSide(color: cyberGreen),
                     minimumSize: const Size.fromHeight(36),
                   ),
                 ),

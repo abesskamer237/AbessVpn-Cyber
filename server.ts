@@ -21,6 +21,23 @@ const usersFile = path.resolve(dataDir, 'users.json');
 const tokensFile = path.resolve(dataDir, 'tokens.json');
 const configFile = path.resolve(dataDir, 'config.json');
 const devicesFile = path.resolve(dataDir, 'devices.json');
+const transactionsFile = path.resolve(dataDir, 'transactions.json');
+
+// Atomic File Persistence Helper
+function writeJsonAtomically(filePath: string, value: unknown): boolean {
+  const contents = JSON.stringify(value, null, 2) + '\n';
+  if (fs.existsSync(filePath)) {
+    try {
+      if (fs.readFileSync(filePath, 'utf8') === contents) return false;
+    } catch {
+      // rewrite corrupted
+    }
+  }
+  const tempPath = `${filePath}.${process.pid}.${Math.random().toString(36).substring(2, 7)}.tmp`;
+  fs.writeFileSync(tempPath, contents, { encoding: 'utf8', mode: 0o640 });
+  fs.renameSync(tempPath, filePath);
+  return true;
+}
 
 export interface DeviceRecord {
   id: string;
@@ -68,6 +85,9 @@ export interface ClientToken {
   lastSeenAt: string | null;
   lastSeenIp: string | null;
   status: 'active' | 'revoked' | 'expired' | 'quota_exceeded';
+  customerNote?: string;
+  customerContact?: string;
+  deviceIds?: string[];
   encryptedLink: string;
   createdAt: string;
 }
@@ -121,7 +141,7 @@ function loadMasterConfig(): MasterServerConfig {
 }
 
 function saveMasterConfig(cfg: MasterServerConfig) {
-  fs.writeFileSync(configFile, JSON.stringify(cfg, null, 2), 'utf8');
+  writeJsonAtomically(configFile, cfg);
 }
 
 // User Storage with Initial Super Admin
@@ -168,7 +188,7 @@ function loadUsers(): AppUser[] {
 }
 
 function saveUsers(users: AppUser[]) {
-  fs.writeFileSync(usersFile, JSON.stringify(users, null, 2), 'utf8');
+  writeJsonAtomically(usersFile, users);
 }
 
 // Tokens Storage
@@ -206,7 +226,7 @@ function loadTokens(): ClientToken[] {
 }
 
 function saveTokens(tokens: ClientToken[]) {
-  fs.writeFileSync(tokensFile, JSON.stringify(tokens, null, 2), 'utf8');
+  writeJsonAtomically(tokensFile, tokens);
 }
 
 // Devices Anti-Abuse Storage
@@ -222,7 +242,7 @@ function loadDevices(): DeviceRecord[] {
 }
 
 function saveDevices(devices: DeviceRecord[]) {
-  fs.writeFileSync(devicesFile, JSON.stringify(devices, null, 2), 'utf8');
+  writeJsonAtomically(devicesFile, devices);
 }
 
 // Versioned authenticated encryption. The master key never leaves the server.
@@ -569,6 +589,123 @@ async function startServer() {
     }
 
     res.status(201).json(newToken);
+  });
+
+  // Batch / Bulk Token Generation for commercial vouchers
+  app.post('/api/v1/admin/tokens/batch', authenticate, (req, res) => {
+    const user: AppUser = (req as any).user;
+    const count = Math.min(200, Math.max(1, Number(req.body?.count) || 5));
+    const requestedGb = Math.max(1, Number(req.body?.bandwidthGb) || 50);
+    const days = Math.max(1, Number(req.body?.days) || 30);
+    const clientLimit = Math.max(1, Math.min(10, Math.floor(Number(req.body?.deviceLimit) || 2)));
+    const voucherPrefix = (req.body?.voucherPrefix?.toString()?.trim() || 'VIP').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const plan = req.body?.plan?.toString()?.trim() || `${requestedGb} GO CYBER VIP`;
+    const customerNotePrefix = req.body?.customerNotePrefix?.toString()?.trim() || '';
+
+    const totalRequiredGb = requestedGb * count;
+    if (user.role === 'RESELLER' && user.credits < totalRequiredGb) {
+      res.status(400).json({
+        error: `Crédits insuffisants pour ce lot ! Requis : ${totalRequiredGb} Go (${count} x ${requestedGb} Go). Votre solde : ${user.credits} Go.`
+      });
+      return;
+    }
+
+    const masterConfig = loadMasterConfig();
+    const calculatedExpiresAt = new Date(Date.now() + days * 24 * 3600 * 1000).toISOString();
+    const tokens = loadTokens();
+    const createdTokens: ClientToken[] = [];
+
+    for (let i = 0; i < count; i++) {
+      const randomSuffix = crypto.randomBytes(3).toString('hex').toUpperCase();
+      const finalToken = `ABESS-${voucherPrefix}-${randomSuffix}`;
+      const encryptedPayload = {
+        vpnName: 'AbessVpn',
+        token: finalToken,
+        bandwidthGb: requestedGb,
+        expiresAt: calculatedExpiresAt,
+        serverHost: masterConfig.serverHost,
+        serverPort: masterConfig.serverPort,
+        path: masterConfig.path,
+        sniHost: masterConfig.sniHost,
+        uuid: masterConfig.uuid,
+        protocol: masterConfig.protocol,
+        transport: masterConfig.transport
+      };
+      const encryptedLink = encryptConfig(encryptedPayload, masterConfig.secretPassphrase);
+
+      const newToken: ClientToken = {
+        id: 'tok_' + crypto.randomUUID().slice(0, 8),
+        token: finalToken,
+        resellerId: user.id,
+        resellerName: user.name,
+        plan,
+        bandwidthGb: requestedGb,
+        bandwidthUsedGb: 0,
+        expiresAt: calculatedExpiresAt,
+        days,
+        deviceLimit: clientLimit,
+        customerNote: customerNotePrefix ? `${customerNotePrefix} #${i + 1}` : undefined,
+        connectionCount: 0,
+        lastSeenAt: null,
+        lastSeenIp: null,
+        status: 'active',
+        encryptedLink,
+        createdAt: new Date().toISOString()
+      };
+      createdTokens.push(newToken);
+      tokens.unshift(newToken);
+    }
+
+    saveTokens(tokens);
+
+    const users = loadUsers();
+    const currentUser = users.find(u => u.id === user.id);
+    if (currentUser) {
+      if (user.role === 'RESELLER') {
+        currentUser.credits = Math.max(0, currentUser.credits - totalRequiredGb);
+      }
+      currentUser.totalTokensCreated = (currentUser.totalTokensCreated || 0) + count;
+      currentUser.totalBandwidthAllocatedGb = (currentUser.totalBandwidthAllocatedGb || 0) + totalRequiredGb;
+      saveUsers(users);
+    }
+
+    res.status(201).json({
+      success: true,
+      count,
+      totalBandwidthGb: totalRequiredGb,
+      tokens: createdTokens
+    });
+  });
+
+  // 1-Click Device Slot Reset
+  app.post('/api/v1/admin/tokens/:id/reset-devices', authenticate, (req, res) => {
+    const user: AppUser = (req as any).user;
+    const tokens = loadTokens();
+    const target = tokens.find(item => item.id === req.params.id);
+    if (!target) {
+      res.status(404).json({ error: 'Token introuvable.' });
+      return;
+    }
+    if (user.role !== 'SUPER_ADMIN' && target.resellerId !== user.id) {
+      res.status(403).json({ error: 'Vous ne pouvez réinitialiser que vos propres licences.' });
+      return;
+    }
+
+    const devices = loadDevices();
+    let unbindCount = 0;
+    for (const d of devices) {
+      if (d.boundTokens && d.boundTokens.includes(target.token)) {
+        d.boundTokens = d.boundTokens.filter(t => t !== target.token);
+        unbindCount++;
+      }
+    }
+    saveDevices(devices);
+
+    res.json({
+      success: true,
+      token: target.token,
+      message: `Tous les appareils liés à la licence ${target.token} ont été réinitialisés (${unbindCount} slot(s) libéré(s)).`
+    });
   });
 
   // Revoke / Delete Token
