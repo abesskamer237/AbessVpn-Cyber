@@ -1923,9 +1923,6 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     if (transport == 'native' && protocol != 'shadowsocks') {
       throw UnsupportedError('Le mode TCP + UDP natif est disponible uniquement avec Shadowsocks.');
     }
-    if (protocol == 'shadowsocks' && transport != 'native') {
-      throw UnsupportedError('Pour avoir TCP et UDP avec Shadowsocks, sélectionne le transport natif sur le port 10050.');
-    }
     final effectiveTransport = transport == 'tcp' ? 'raw' : (transport == 'mkcp' ? 'kcp' : transport);
     if ((effectiveTransport == 'raw' || effectiveTransport == 'kcp') && protocol != 'vmess' && srv.token != 'RAW-LINK-IMPORT') {
       throw UnsupportedError('RAW/TCP et mKCP/UDP sont réservés à VMess sur le serveur ABESS.');
