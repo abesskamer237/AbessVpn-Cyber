@@ -3093,9 +3093,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
                   ? "AbessVpn"
                   : _currentNavIndex == 1
                       ? "Serveurs & Tokens"
-                      : _currentNavIndex == 2
-                          ? "Mode manuel"
-                          : "Outils & Diagnostic",
+                      : "Outils & Diagnostic",
               style: TextStyle(color: _textPrimary, fontWeight: FontWeight.bold, fontSize: 17),
             ),
           ],

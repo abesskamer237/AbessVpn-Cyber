@@ -9,17 +9,17 @@ void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
     PackageInfo.setMockInitialValues(
-      appName: 'AbessVpn Cyber',
-      packageName: 'com.example.abess_vpn',
-      version: '2.0.0',
-      buildNumber: '2',
+      appName: 'AbessVpn',
+      packageName: 'com.abessvpn.app',
+      version: '2.2.0',
+      buildNumber: '4',
       buildSignature: '',
     );
   });
 
   testWidgets('AbessVpnApp renders title correctly', (WidgetTester tester) async {
     await tester.pumpWidget(const AbessVpnApp());
-    expect(find.text('AbessVpn Cyber'), findsOneWidget);
+    expect(find.text('AbessVpn'), findsWidgets);
   });
 }
 
