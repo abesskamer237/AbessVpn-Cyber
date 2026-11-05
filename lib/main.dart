@@ -756,21 +756,66 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
   }
 
   bool _updateDialogShown = false;
+  bool _isMandatoryUpdateBlocked = false;
 
   Future<void> _checkForAppUpdate({bool showUpToDate = false}) async {
     try {
       final current = await PackageInfo.fromPlatform();
-      final response = await http.get(
-        Uri.parse('https://api.github.com/repos/abesskamer237/AbessVpn-Cyber/releases/latest'),
-        headers: const {'Accept': 'application/vnd.github+json'},
-      ).timeout(const Duration(seconds: 8));
-      if (response.statusCode != 200) {
-        if (showUpToDate && mounted) _showToast('Vérification des mises à jour indisponible.');
-        return;
-      }
-      final release = jsonDecode(response.body) as Map<String, dynamic>;
-      final latest = (release['tag_name'] ?? '').toString().replaceFirst(RegExp(r'^v'), '').split('+').first;
       final installed = current.version.split('+').first;
+
+      String latest = '';
+      String minRequired = '';
+      bool isMandatory = false;
+      String downloadUrl = '';
+      String notes = '';
+
+      // 1. Priorité au serveur maître /api/v1/app/version
+      final endpoints = <String>[..._masterServerUrls];
+      if (currentServer != null && currentServer!.address.isNotEmpty) {
+        final srvHost = 'https://${currentServer!.address}';
+        if (!endpoints.contains(srvHost)) endpoints.add(srvHost);
+      }
+
+      for (final base in endpoints) {
+        try {
+          final res = await http.get(Uri.parse('$base/api/v1/app/version')).timeout(const Duration(seconds: 4));
+          if (res.statusCode == 200) {
+            final data = jsonDecode(res.body) as Map<String, dynamic>;
+            latest = (data['latestVersion'] ?? '').toString().replaceFirst(RegExp(r'^v'), '').split('+').first;
+            minRequired = (data['minRequiredVersion'] ?? '').toString().replaceFirst(RegExp(r'^v'), '').split('+').first;
+            isMandatory = data['isMandatory'] == true;
+            downloadUrl = (data['downloadUrl'] ?? '').toString();
+            notes = (data['releaseNotes'] ?? '').toString().trim();
+            break;
+          }
+        } catch (_) {}
+      }
+
+      // 2. Repli vers GitHub releases si serveur maître inaccessible
+      if (latest.isEmpty) {
+        try {
+          final response = await http.get(
+            Uri.parse('https://api.github.com/repos/abesskamer237/AbessVpn-Cyber/releases/latest'),
+            headers: const {'Accept': 'application/vnd.github+json'},
+          ).timeout(const Duration(seconds: 6));
+          if (response.statusCode == 200) {
+            final release = jsonDecode(response.body) as Map<String, dynamic>;
+            latest = (release['tag_name'] ?? '').toString().replaceFirst(RegExp(r'^v'), '').split('+').first;
+            notes = (release['body'] ?? '').toString().trim();
+            final assets = (release['assets'] as List<dynamic>? ?? const []);
+            final apks = assets.whereType<Map<String, dynamic>>().where((a) =>
+              (a['name'] ?? '').toString().toLowerCase().endsWith('.apk')).toList();
+            if (apks.isNotEmpty) {
+              downloadUrl = (apks.first['browser_download_url'] ?? '').toString();
+            }
+          }
+        } catch (_) {}
+      }
+
+      if (downloadUrl.isEmpty) {
+        downloadUrl = 'https://t.me/Abess_Vpn';
+      }
+
       int compare(String a, String b) {
         final aa = a.split('.').map((v) => int.tryParse(v) ?? 0).toList();
         final bb = b.split('.').map((v) => int.tryParse(v) ?? 0).toList();
@@ -781,56 +826,137 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
         }
         return 0;
       }
-      if (compare(latest, installed) <= 0) {
-        if (showUpToDate && mounted) _showToast('ABESS VPN est déjà à jour.');
+
+      if (latest.isEmpty) {
+        if (showUpToDate && mounted) _showToast('Impossible de vérifier les mises à jour.');
         return;
       }
+
+      final isNewer = compare(latest, installed) > 0;
+      final isBelowMin = minRequired.isNotEmpty && compare(minRequired, installed) > 0;
+      final forceUpdate = isNewer && (isMandatory || isBelowMin);
+
+      if (!isNewer && !isBelowMin) {
+        _isMandatoryUpdateBlocked = false;
+        if (showUpToDate && mounted) _showToast('ABESS VPN est déjà à jour (v$installed).');
+        return;
+      }
+
+      if (forceUpdate) {
+        _isMandatoryUpdateBlocked = true;
+        if (isConnected) {
+          _userWantedConnection = false;
+          unawaited(_disconnectVpn());
+        }
+      }
+
       if (!mounted || _updateDialogShown) return;
-      final assets = (release['assets'] as List<dynamic>? ?? const []);
-      final apks = assets.whereType<Map<String, dynamic>>().where((a) =>
-        (a['name'] ?? '').toString().toLowerCase().endsWith('.apk')).toList();
-      if (apks.isEmpty) return;
-      final downloadUrl = (apks.first['browser_download_url'] ?? '').toString();
-      if (downloadUrl.isEmpty) return;
       _updateDialogShown = true;
-      final notes = (release['body'] ?? 'Corrections et améliorations disponibles.').toString().trim();
+
       await showDialog<void>(
         context: context,
-        barrierDismissible: false,
-        builder: (dialogContext) => AlertDialog(
-          backgroundColor: cyberCardBg,
-          title: const Row(children: [
-            Icon(Icons.system_update_alt, color: cyberGreen),
-            SizedBox(width: 8),
-            Expanded(child: Text('Mise à jour disponible')),
-          ]),
-          content: SingleChildScrollView(child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Version installée : ${current.version}'),
-              const SizedBox(height: 4),
-              Text('Nouvelle version : $latest', style: const TextStyle(color: cyberGreen, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 12),
-              Text(notes.isEmpty ? 'Améliorations et corrections.' : notes),
-              const SizedBox(height: 10),
-              const Text('Le navigateur téléchargera l’APK. Android demandera ensuite de confirmer son installation.', style: TextStyle(fontSize: 11)),
-            ],
-          )),
-          actions: [
-            TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('Plus tard')),
-            FilledButton.icon(
-              onPressed: () async {
-                Navigator.of(dialogContext).pop();
-                final uri = Uri.tryParse(downloadUrl);
-                if (uri != null) await launchUrl(uri, mode: LaunchMode.externalApplication);
-              },
-              icon: const Icon(Icons.download),
-              label: const Text('Télécharger'),
+        barrierDismissible: !forceUpdate,
+        builder: (dialogContext) => PopScope(
+          canPop: !forceUpdate,
+          child: AlertDialog(
+            backgroundColor: cyberCardBg,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+              side: BorderSide(
+                color: forceUpdate ? const Color(0xFFEF4444) : cyberGreen,
+                width: 1.5,
+              ),
             ),
-          ],
+            title: Row(
+              children: [
+                Icon(
+                  forceUpdate ? Icons.warning_amber_rounded : Icons.system_update_alt,
+                  color: forceUpdate ? const Color(0xFFEF4444) : cyberGreen,
+                  size: 28,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    forceUpdate ? 'MISE À JOUR OBLIGATOIRE' : 'Mise à jour disponible',
+                    style: TextStyle(
+                      color: forceUpdate ? const Color(0xFFEF4444) : Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (forceUpdate) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEF4444).withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Text(
+                        'OBLIGATOIRE : ACCÈS BLOQUÉ TANT QUE NON INSTALLÉE',
+                        style: TextStyle(color: Color(0xFFEF4444), fontSize: 10, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  Text('Version actuelle : v$installed', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                  const SizedBox(height: 4),
+                  Text('Nouvelle version : v$latest', style: const TextStyle(color: cyberGreen, fontWeight: FontWeight.bold, fontSize: 14)),
+                  const SizedBox(height: 12),
+                  Text(
+                    notes.isEmpty
+                        ? (forceUpdate
+                            ? 'Cette mise à jour apporte des améliorations de sécurité indispensables. Vous devez mettre à jour pour continuer à utiliser le VPN.'
+                            : 'Améliorations et corrections disponibles.')
+                        : notes,
+                    style: const TextStyle(color: Colors.white, fontSize: 12),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Appuyez ci-dessous pour télécharger la nouvelle version.',
+                    style: TextStyle(fontSize: 11, color: Colors.white54),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              if (!forceUpdate)
+                TextButton(
+                  onPressed: () {
+                    _updateDialogShown = false;
+                    Navigator.of(dialogContext).pop();
+                  },
+                  child: const Text('Plus tard'),
+                ),
+              FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  backgroundColor: forceUpdate ? const Color(0xFFEF4444) : cyberGreen,
+                  foregroundColor: Colors.black,
+                  textStyle: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                onPressed: () async {
+                  if (!forceUpdate) {
+                    _updateDialogShown = false;
+                    Navigator.of(dialogContext).pop();
+                  }
+                  final uri = Uri.tryParse(downloadUrl);
+                  if (uri != null) await launchUrl(uri, mode: LaunchMode.externalApplication);
+                },
+                icon: const Icon(Icons.download),
+                label: Text(forceUpdate ? 'Mettre à jour maintenant' : 'Télécharger'),
+              ),
+            ],
+          ),
         ),
       );
+      _updateDialogShown = false;
     } catch (_) {
       if (showUpToDate && mounted) _showToast('Impossible de vérifier les mises à jour pour le moment.');
     }
@@ -1799,6 +1925,13 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
   }
 
   Future<void> _connectVpn() async {
+    if (_isMandatoryUpdateBlocked) {
+      _userWantedConnection = false;
+      _showToast('Mise à jour obligatoire requise avant toute connexion.');
+      _checkForAppUpdate();
+      return;
+    }
+
     if (currentServer == null) {
       _showImportModal();
       return;
