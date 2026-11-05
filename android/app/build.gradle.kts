@@ -39,9 +39,8 @@ android {
         versionCode = flutter.versionCode()
         versionName = flutter.versionName()
 
-        ndk {
-            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
-        }
+        // Packaging and ABI optimization is managed dynamically by Flutter CLI
+        // via --split-per-abi to yield lightweight ~20MB per-architecture APKs.
     }
 
     packaging {

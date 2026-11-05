@@ -168,17 +168,23 @@ jobs:
               --split-debug-info=build/private-symbols/abess-vpn \
               --dart-define="ABESS_API_BASE_URL=https://$VPN_DOMAIN"
 
-            # 2. Build universal ARM APK (arm64 + arm32 without x86 emulator bloat: ~35MB)
+            mkdir -p build/dist-apks
+            cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk build/dist-apks/
+            cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk build/dist-apks/
+
+            # 2. Build universal APK
             flutter build apk --release --no-tree-shake-icons \
               --build-name="$VERSION_NAME" --build-number="$VERSION_CODE" \
               --obfuscate \
               --split-debug-info=build/private-symbols/abess-vpn \
               --dart-define="ABESS_API_BASE_URL=https://$VPN_DOMAIN"
+
+            cp build/dist-apks/* build/app/outputs/flutter-apk/ || true
           fi
 
       - uses: actions/upload-artifact@v4
         with:
           name: abess-vpn-${{ github.event_name == 'pull_request' && 'debug-pr' || 'release-signed' }}
-          path: build/app/outputs/flutter-apk/app-*.apk
+          path: build/app/outputs/flutter-apk/*.apk
           if-no-files-found: error
 
