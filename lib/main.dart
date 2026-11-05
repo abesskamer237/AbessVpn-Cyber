@@ -80,6 +80,50 @@ class ImportedVpnServer {
   double get usedPercentage => math.min(100.0, (bandwidthUsedGb / (bandwidthGb > 0 ? bandwidthGb : 1)) * 100.0);
 }
 
+class ServerAnnouncement {
+  final String id;
+  final String title;
+  final String message;
+  final String type;
+  final String targetPlatform;
+  final bool isMandatory;
+  final bool dismissible;
+  final String? actionButtonText;
+  final String? actionButtonUrl;
+  final String showMode;
+  final String publishedAt;
+
+  ServerAnnouncement({
+    required this.id,
+    required this.title,
+    required this.message,
+    required this.type,
+    required this.targetPlatform,
+    required this.isMandatory,
+    required this.dismissible,
+    this.actionButtonText,
+    this.actionButtonUrl,
+    required this.showMode,
+    required this.publishedAt,
+  });
+
+  factory ServerAnnouncement.fromJson(Map<String, dynamic> json) {
+    return ServerAnnouncement(
+      id: (json['id'] ?? '').toString(),
+      title: (json['title'] ?? '').toString(),
+      message: (json['message'] ?? '').toString(),
+      type: (json['type'] ?? 'INFO').toString().toUpperCase(),
+      targetPlatform: (json['targetPlatform'] ?? 'ALL').toString().toUpperCase(),
+      isMandatory: json['isMandatory'] == true,
+      dismissible: json['dismissible'] != false,
+      actionButtonText: json['actionButtonText']?.toString(),
+      actionButtonUrl: json['actionButtonUrl']?.toString(),
+      showMode: (json['showMode'] ?? 'ONCE_PER_USER').toString(),
+      publishedAt: (json['publishedAt'] ?? '').toString(),
+    );
+  }
+}
+
 class AbessVpnApp extends StatelessWidget {
   const AbessVpnApp({super.key});
 
@@ -752,11 +796,17 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
     _initV2Ray();
     _loadSavedServer();
     _measureRealPing();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _checkForAppUpdate());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkForAppUpdate();
+      _fetchAndShowAnnouncements();
+    });
   }
 
   bool _updateDialogShown = false;
   bool _isMandatoryUpdateBlocked = false;
+  List<ServerAnnouncement> _activeAnnouncements = [];
+  bool _hasUnreadAnnouncements = false;
+  bool _announcementDialogShowing = false;
 
   Future<void> _checkForAppUpdate({bool showUpToDate = false}) async {
     try {
@@ -959,6 +1009,256 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
       _updateDialogShown = false;
     } catch (_) {
       if (showUpToDate && mounted) _showToast('Impossible de vérifier les mises à jour pour le moment.');
+    }
+  }
+
+  // ==========================================
+  // SYSTÈME D'ANNONCES RÉSEAU (PUSH POPUPS EN TEMPS RÉEL)
+  // ==========================================
+  Future<void> _fetchAndShowAnnouncements({bool userInitiated = false}) async {
+    try {
+      final endpoints = <String>[..._masterServerUrls];
+      if (currentServer != null && currentServer!.address.isNotEmpty) {
+        final srvHost = 'https://${currentServer!.address}';
+        if (!endpoints.contains(srvHost)) endpoints.add(srvHost);
+      }
+
+      List<ServerAnnouncement> fetched = [];
+      for (final base in endpoints) {
+        try {
+          final res = await http.get(Uri.parse('$base/api/v1/announcements/active?platform=android')).timeout(const Duration(seconds: 4));
+          if (res.statusCode == 200) {
+            final data = jsonDecode(res.body) as Map<String, dynamic>;
+            final rawList = (data['announcements'] as List<dynamic>? ?? []);
+            fetched = rawList.whereType<Map<String, dynamic>>().map((item) => ServerAnnouncement.fromJson(item)).toList();
+            break;
+          }
+        } catch (_) {}
+      }
+
+      final prefs = await SharedPreferences.getInstance();
+      final dismissedList = prefs.getStringList('abess_dismissed_announcements') ?? [];
+
+      if (mounted) {
+        setState(() {
+          _activeAnnouncements = fetched;
+          _hasUnreadAnnouncements = fetched.any((a) =>
+              a.isMandatory || a.showMode == 'EVERY_LAUNCH' || !dismissedList.contains(a.id));
+        });
+      }
+
+      if (fetched.isEmpty) {
+        if (userInitiated && mounted) {
+          _showToast('📢 Aucune annonce active sur le réseau.');
+        }
+        return;
+      }
+
+      ServerAnnouncement? toShow;
+      if (userInitiated) {
+        toShow = fetched.firstWhere(
+          (a) => a.isMandatory || a.showMode == 'EVERY_LAUNCH' || !dismissedList.contains(a.id),
+          orElse: () => fetched.first,
+        );
+      } else {
+        final unread = fetched.where((a) =>
+            a.isMandatory || a.showMode == 'EVERY_LAUNCH' || !dismissedList.contains(a.id)).toList();
+        if (unread.isNotEmpty) {
+          toShow = unread.first;
+        }
+      }
+
+      if (toShow != null && mounted && !_announcementDialogShowing) {
+        await _displayAnnouncementDialog(toShow);
+      }
+    } catch (e) {
+      if (userInitiated && mounted) {
+        _showToast('Erreur lors de la récupération des annonces.');
+      }
+    }
+  }
+
+  Future<void> _displayAnnouncementDialog(ServerAnnouncement ann) async {
+    _announcementDialogShowing = true;
+    final isCritical = ann.type == 'CRITICAL' || ann.isMandatory;
+    final isWarning = ann.type == 'WARNING';
+    final isPromo = ann.type == 'PROMO';
+    final isUpdate = ann.type == 'UPDATE';
+
+    final Color accentColor = isCritical
+        ? cyberRed
+        : isWarning
+            ? cyberYellow
+            : isPromo
+                ? const Color(0xFFD946EF)
+                : isUpdate
+                    ? cyberCyan
+                    : cyberGreen;
+
+    final IconData typeIcon = isCritical
+        ? Icons.warning_rounded
+        : isWarning
+            ? Icons.bolt_rounded
+            : isPromo
+                ? Icons.card_giftcard_rounded
+                : isUpdate
+                    ? Icons.system_update_rounded
+                    : Icons.info_outline_rounded;
+
+    try {
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: !ann.isMandatory,
+        builder: (dialogCtx) => PopScope(
+          canPop: !ann.isMandatory,
+          child: AlertDialog(
+            backgroundColor: cyberCardBg,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+              side: BorderSide(color: accentColor, width: 2),
+            ),
+            titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+            actionsPadding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+            title: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: accentColor.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: accentColor.withOpacity(0.4)),
+                  ),
+                  child: Icon(typeIcon, color: accentColor, size: 24),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: accentColor.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          ann.type,
+                          style: TextStyle(
+                            color: accentColor,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        ann.title,
+                        style: TextStyle(
+                          color: _textPrimary,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: _fieldBackgroundColor,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: _text12),
+                    ),
+                    child: Text(
+                      ann.message,
+                      style: TextStyle(
+                        color: _textPrimary,
+                        fontSize: 13,
+                        height: 1.5,
+                      ),
+                    ),
+                  ),
+                  if (ann.isMandatory) ...[
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        const Icon(Icons.lock_clock, size: 14, color: cyberRed),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            'Annonce obligatoire avant utilisation du VPN',
+                            style: TextStyle(color: cyberRed, fontSize: 10, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              if (ann.actionButtonText != null && ann.actionButtonUrl != null && ann.actionButtonUrl!.isNotEmpty)
+                ElevatedButton.icon(
+                  onPressed: () {
+                    _markAnnouncementDismissed(ann.id);
+                    Navigator.pop(dialogCtx);
+                    _openUrlSafe(ann.actionButtonUrl!);
+                  },
+                  icon: const Icon(Icons.open_in_new, size: 14, color: Colors.black),
+                  label: Text(
+                    ann.actionButtonText!,
+                    style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 11),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: accentColor,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+              TextButton(
+                onPressed: () {
+                  _markAnnouncementDismissed(ann.id);
+                  Navigator.pop(dialogCtx);
+                },
+                child: Text(
+                  ann.isMandatory ? 'J\'ai compris et je poursuis' : 'Fermer',
+                  style: TextStyle(
+                    color: ann.isMandatory ? cyberGreen : _text60,
+                    fontWeight: ann.isMandatory ? FontWeight.bold : FontWeight.normal,
+                    fontSize: 11,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    } finally {
+      _announcementDialogShowing = false;
+    }
+  }
+
+  Future<void> _markAnnouncementDismissed(String id) async {
+    final prefs = await SharedPreferences.getInstance();
+    final list = prefs.getStringList('abess_dismissed_announcements') ?? [];
+    if (!list.contains(id)) {
+      list.add(id);
+      await prefs.setStringList('abess_dismissed_announcements', list);
+    }
+    if (mounted) {
+      setState(() {
+        _hasUnreadAnnouncements = _activeAnnouncements.any((a) =>
+            a.isMandatory || a.showMode == 'EVERY_LAUNCH' || !list.contains(a.id));
+      });
     }
   }
 
@@ -3053,7 +3353,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
             SizedBox(width: 10),
             Text(
               _currentNavIndex == 0
-                  ? "AbessVpn Cyber"
+                  ? "AbessVpn"
                   : _currentNavIndex == 1
                       ? "Serveurs & Tokens"
                       : _currentNavIndex == 2
@@ -3064,6 +3364,29 @@ class _MainVpnScreenState extends State<MainVpnScreen> with SingleTickerProvider
           ],
         ),
         actions: [
+          IconButton(
+            onPressed: () => _fetchAndShowAnnouncements(userInitiated: true),
+            icon: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                const Icon(Icons.campaign_rounded, color: cyberYellow),
+                if (_hasUnreadAnnouncements)
+                  Positioned(
+                    right: -2,
+                    top: -2,
+                    child: Container(
+                      width: 8,
+                      height: 8,
+                      decoration: const BoxDecoration(
+                        color: Colors.redAccent,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            tooltip: "📢 Annonces du Réseau",
+          ),
           IconButton(
             onPressed: () => _openUrlSafe(_telegramChannelUrl),
             icon: Icon(Icons.send_rounded, color: cyberCyan),
