@@ -550,7 +550,15 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
         }
       }
 
-      _showToast('Format inconnu. Utilisez vless://, vmess://, trojan://, ss:// ou wg://.');
+      final genyMatch = RegExp(r'GENY-[A-Za-z0-9_-]{16,64}', caseSensitive: false).firstMatch(link.trim());
+      if (genyMatch != null) {
+        final extractedToken = genyMatch.group(0)!;
+        _addLog('DÉTECTION CODE GENY : $extractedToken');
+        await _importServerByToken(extractedToken);
+        return;
+      }
+
+      _showToast('Format inconnu. Utilisez vless://, vmess://, trojan://, ss://, wg:// ou un token GENY.');
     } catch (e) {
       _addLog('ÉCHEC IMPORT LIEN : ' + e.toString());
       _showToast('Lien invalide ou transport non pris en charge.');
