@@ -487,7 +487,70 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
         return;
       }
 
-      _showToast('Format inconnu. Utilisez vless://, vmess://, trojan:// ou ss://.');
+      if (link.startsWith('wireguard://') || link.startsWith('wg://')) {
+        final uri = Uri.parse(link.replaceFirst('wireguard://', 'wg://'));
+        final q = uri.queryParameters;
+        final privKey = Uri.decodeComponent(uri.userInfo);
+        final pubKey = q['publickey'] ?? q['pubkey'] ?? q['server_pubkey'] ?? '+Qu+gVMRhaR0hL3ePZwd+l+L/NQf8jOrf7QZLGJCUCU=';
+        final clientIp = q['address'] ?? q['ip'] ?? '10.231.0.2/32';
+        final host = uri.host.isNotEmpty ? uri.host : '79.76.109.186';
+        final port = uri.port > 0 ? uri.port : 51820;
+        final name = uri.fragment.isNotEmpty ? Uri.decodeComponent(uri.fragment) : 'WireGuard (Geny) importé';
+        acceptProfile(
+          name: name,
+          host: host,
+          port: port,
+          passwordOrUuid: privKey,
+          protocol: 'wireguard',
+          transport: 'native',
+          tls: false,
+          method: clientIp,
+          wsHost: pubKey,
+          sni: pubKey,
+        );
+        return;
+      }
+
+      if (link.contains('[Interface]') && (link.contains('[Peer]') || link.contains('PrivateKey'))) {
+        final lines = link.split(RegExp(r'\r?\n'));
+        String privKey = '';
+        String clientIp = '10.231.0.2/32';
+        String pubKey = '+Qu+gVMRhaR0hL3ePZwd+l+L/NQf8jOrf7QZLGJCUCU=';
+        String endpoint = '79.76.109.186:51820';
+        for (final line in lines) {
+          final trimmed = line.trim();
+          if (trimmed.startsWith('#') || trimmed.isEmpty) continue;
+          final parts = trimmed.split('=');
+          if (parts.length >= 2) {
+            final key = parts[0].trim().toLowerCase();
+            final val = parts.sublist(1).join('=').trim();
+            if (key == 'privatekey') privKey = val;
+            else if (key == 'address') clientIp = val;
+            else if (key == 'publickey') pubKey = val;
+            else if (key == 'endpoint') endpoint = val;
+          }
+        }
+        if (privKey.isNotEmpty) {
+          final epParts = endpoint.split(':');
+          final host = epParts[0];
+          final port = epParts.length > 1 ? (int.tryParse(epParts[1]) ?? 51820) : 51820;
+          acceptProfile(
+            name: 'WireGuard (Geny) Config importée',
+            host: host,
+            port: port,
+            passwordOrUuid: privKey,
+            protocol: 'wireguard',
+            transport: 'native',
+            tls: false,
+            method: clientIp,
+            wsHost: pubKey,
+            sni: pubKey,
+          );
+          return;
+        }
+      }
+
+      _showToast('Format inconnu. Utilisez vless://, vmess://, trojan://, ss:// ou wg://.');
     } catch (e) {
       _addLog('ÉCHEC IMPORT LIEN : ' + e.toString());
       _showToast('Lien invalide ou transport non pris en charge.');
@@ -513,12 +576,12 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
   final List<String> _logs = [];
 
   // URLs Serveurs Maîtres AbessVpn
-  static const String _configuredApiBaseUrl = String.fromEnvironment('ABESS_API_BASE_URL', defaultValue: '');
+  static const String _configuredApiBaseUrl = String.fromEnvironment('ABESS_API_BASE_URL', defaultValue: 'https://server.nexustunnel.me:2096');
 
-  // The control-plane address is supplied at build time; no legacy demo hosts are used.
+  // The control-plane address is supplied at build time; defaults to NexusTunnel server.
   final List<String> _masterServerUrls = _configuredApiBaseUrl.trim().isNotEmpty
       ? [_configuredApiBaseUrl.trim().replaceFirst(RegExp(r'/+$'), '')]
-      : const <String>[];
+      : const <String>['https://server.nexustunnel.me:2096'];
 
   late AnimationController _pulseController;
   late AnimationController _rotateController;
@@ -2082,7 +2145,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
     // Shadowsocks natif transporte directement TCP et UDP sur le port 10050.
     final protocol = srv.protocol.toLowerCase();
     final transport = srv.transport.toLowerCase();
-    const supportedProtocols = {'vless', 'vmess', 'trojan', 'shadowsocks'};
+    const supportedProtocols = {'vless', 'vmess', 'trojan', 'shadowsocks', 'wireguard', 'geny'};
     const supportedTransports = {'ws', 'grpc', 'httpupgrade', 'xhttp', 'raw', 'tcp', 'kcp', 'mkcp', 'native'};
 
     if (!supportedProtocols.contains(protocol) || !supportedTransports.contains(transport)) {
@@ -2090,8 +2153,8 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
         'Configuration non prise en charge : ${protocol.toUpperCase()} + ${transport.toUpperCase()}.',
       );
     }
-    if (transport == 'native' && protocol != 'shadowsocks') {
-      throw UnsupportedError('Le mode TCP + UDP natif est disponible uniquement avec Shadowsocks.');
+    if (transport == 'native' && protocol != 'shadowsocks' && protocol != 'wireguard' && protocol != 'geny') {
+      throw UnsupportedError('Le mode TCP + UDP natif est disponible uniquement avec Shadowsocks ou WireGuard.');
     }
     final effectiveTransport = transport == 'tcp' ? 'raw' : (transport == 'mkcp' ? 'kcp' : transport);
     if ((effectiveTransport == 'raw' || effectiveTransport == 'kcp') && protocol != 'vmess' && srv.token != 'RAW-LINK-IMPORT') {
@@ -2153,12 +2216,28 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
           ]
         };
         break;
+      case 'wireguard':
+      case 'geny':
+        outboundSettings = {
+          'secretKey': srv.uuid,
+          'address': [srv.method.isNotEmpty && srv.method.contains('/') ? srv.method : '10.231.0.2/32'],
+          'peers': [
+            {
+              'publicKey': srv.wsHost.isNotEmpty ? srv.wsHost : (srv.sni.isNotEmpty ? srv.sni : '+Qu+gVMRhaR0hL3ePZwd+l+L/NQf8jOrf7QZLGJCUCU='),
+              'endpoint': '${srv.address}:${srv.port}',
+              'allowedIPs': ['0.0.0.0/0'],
+              'keepAlive': 25
+            }
+          ],
+          'mtu': 1280
+        };
+        break;
       default:
         throw UnsupportedError('Protocole non pris en charge.');
     }
 
     final Map<String, dynamic>? streamSettings;
-    if (transport == 'native') {
+    if (transport == 'native' || protocol == 'wireguard' || protocol == 'geny') {
       streamSettings = null;
     } else {
       final Map<String, dynamic> transportSettings;
@@ -2241,7 +2320,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
     if (streamSettings != null) {
       proxyOutbound['streamSettings'] = streamSettings;
     }
-    if (_isMuxEnabled && !{'native', 'grpc', 'kcp'}.contains(effectiveTransport)) {
+    if (_isMuxEnabled && !{'native', 'grpc', 'kcp'}.contains(effectiveTransport) && protocol != 'wireguard' && protocol != 'geny') {
       // XUDP transporte les paquets UDP dans le tunnel quand le protocole le permet.
       // Xray recommande de ne pas activer MUX pour gRPC/HTTP2; mKCP possède déjà son transport UDP.
       proxyOutbound['mux'] = {
