@@ -587,9 +587,25 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
   static const String _configuredApiBaseUrl = String.fromEnvironment('ABESS_API_BASE_URL', defaultValue: 'https://server.nexustunnel.me:2096');
 
   // The control-plane address is supplied at build time; defaults to NexusTunnel server.
-  final List<String> _masterServerUrls = _configuredApiBaseUrl.trim().isNotEmpty
-      ? [_configuredApiBaseUrl.trim().replaceFirst(RegExp(r'/+$'), '')]
-      : const <String>['https://server.nexustunnel.me:2096'];
+  static final List<String> _robustMasterUrls = () {
+    final list = <String>[];
+    var configured = _configuredApiBaseUrl.trim().replaceFirst(RegExp(r'/+$'), '');
+    if (configured.isNotEmpty && !configured.contains('panel.pagnol.xyz')) {
+      if (!configured.startsWith('http://') && !configured.startsWith('https://')) {
+        configured = 'https://$configured';
+      }
+      list.add(configured);
+    }
+    const robustDefaults = [
+      'https://server.nexustunnel.me:2096',
+      'https://152.70.40.192:2096',
+    ];
+    for (final def in robustDefaults) {
+      if (!list.contains(def)) list.add(def);
+    }
+    return list;
+  }();
+  final List<String> _masterServerUrls = _robustMasterUrls;
 
   late AnimationController _pulseController;
   late AnimationController _rotateController;
@@ -2462,7 +2478,10 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
 
     // 1. IMPORTATION PAR CLÉ TOKEN
   Future<void> _importServerByToken(String tokenCode, {bool silent = false}) async {
-    final cleanToken = tokenCode.trim().toUpperCase();
+    var cleanToken = tokenCode.trim();
+    if (cleanToken.toUpperCase().startsWith('NY-')) {
+      cleanToken = 'GE' + cleanToken;
+    }
     if (cleanToken.isEmpty) {
       if (!silent) _addLog('ERREUR: VEUILLEZ SAISIR UN TOKEN');
       return;

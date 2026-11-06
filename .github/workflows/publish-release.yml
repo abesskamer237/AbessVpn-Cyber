@@ -86,8 +86,8 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]] || { echo "Use a version tag like v2.1.0"; exit 1; }
-          VPN_DOMAIN="${VPN_DOMAIN:-panel.pagnol.xyz}"
-          [[ "$VPN_DOMAIN" =~ ^[A-Za-z0-9.-]+$ ]] || { echo "Set repository variable VPN_DOMAIN to a hostname only."; exit 1; }
+          VPN_DOMAIN="${VPN_DOMAIN:-server.nexustunnel.me:2096}"
+          [[ "$VPN_DOMAIN" =~ ^[A-Za-z0-9.:-]+$ ]] || { echo "Set repository variable VPN_DOMAIN to a host:port or hostname only."; exit 1; }
 
       - name: Prepare Android project
         if: steps.guard.outputs.publish == 'true'
@@ -196,6 +196,7 @@ jobs:
             exit 1
           fi
           VERSION_NAME="${RELEASE_TAG#v}"
+          VPN_DOMAIN="${VPN_DOMAIN:-server.nexustunnel.me:2096}"
           # 1. Build optimized per-ABI split APKs (arm64-v8a: ~20MB, armeabi-v7a: ~18MB)
           flutter build apk --release --split-per-abi --no-tree-shake-icons \
             --build-name="$VERSION_NAME" --build-number="$GITHUB_RUN_NUMBER" \
