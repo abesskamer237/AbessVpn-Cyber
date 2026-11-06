@@ -554,7 +554,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
       if (genyMatch != null) {
         final extractedToken = genyMatch.group(0)!;
         _addLog('DÉTECTION CODE GENY : $extractedToken');
-        await _importServerByToken(extractedToken);
+        unawaited(_importServerByToken(extractedToken));
         return;
       }
 
