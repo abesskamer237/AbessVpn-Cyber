@@ -376,6 +376,39 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
     }
 
     try {
+      if (link.startsWith('{') || link.contains('"sshConfig"') || link.contains('"configs"')) {
+        try {
+          final decoded = jsonDecode(link);
+          if (decoded is Map && decoded['configs'] is List && (decoded['configs'] as List).isNotEmpty) {
+            final firstCfg = decoded['configs'][0];
+            final type = (firstCfg['type'] ?? '').toString().toUpperCase();
+            if (type == 'SSH' && firstCfg['sshConfig'] is Map) {
+              final ssh = Map<String, dynamic>.from(firstCfg['sshConfig']);
+              final name = (firstCfg['name'] ?? ssh['remarks'] ?? '𖤍 ORANGE🍊〆DANNY 𖤍').toString();
+              final host = (ssh['sshHost'] ?? '').toString();
+              final port = int.tryParse((ssh['sshPort'] ?? 80).toString()) ?? 80;
+              final user = (ssh['sshUsername'] ?? '').toString();
+              final pass = (ssh['sshPassword'] ?? '').toString();
+              final payload = (ssh['payload'] ?? '').toString();
+              acceptProfile(
+                name: name,
+                host: host,
+                port: port,
+                passwordOrUuid: '$user:$pass',
+                protocol: 'ssh',
+                transport: 'ws',
+                tls: false,
+                method: payload,
+                wsHost: 'm.batch.com',
+                sni: host,
+              );
+              _addLog('PROFIL SSH-PAYLOAD IMPORTÉ : $name ($user@$host:$port)');
+              return;
+            }
+          }
+        } catch (_) {}
+      }
+
       if (link.startsWith('abess://profile.')) {
         if (_deviceId.isEmpty) throw const FormatException('ID d’installation non initialisé. Réessayez dans quelques secondes.');
         final encoded = link.substring('abess://profile.'.length).split(RegExp(r'[\s#]')).first;
@@ -1508,6 +1541,12 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
                         ),
                       ),
                     ),
+                    if (profile.protocol.toLowerCase() == 'ssh')
+                      IconButton(
+                        tooltip: 'Copier la configuration JSON SSH',
+                        onPressed: () => _copySshJsonConfig(profile),
+                        icon: const Icon(Icons.code, color: cyberYellow, size: 19),
+                      ),
                     IconButton(
                       tooltip: 'Supprimer cette configuration',
                       onPressed: () => unawaited(_deleteSavedServer(profile)),
@@ -1517,6 +1556,145 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
                 ),
               );
             }),
+        ],
+      ),
+    );
+  }
+
+  void _copySshJsonConfig(ImportedVpnServer profile) async {
+    final userPass = profile.uuid.split(':');
+    final user = userPass.isNotEmpty ? userPass[0] : 'dany';
+    final pass = userPass.length > 1 ? userPass.sublist(1).join(':') : '#12345';
+    final jsonMap = {
+      'configs': [
+        {
+          'name': profile.name,
+          'address': '${profile.address}:${profile.port}',
+          'type': 'SSH',
+          'sshConfig': {
+            'sshConfigType': 'SSH-Payload',
+            'remarks': profile.name,
+            'sshHost': profile.address,
+            'sshPort': profile.port,
+            'sshUsername': user,
+            'sshPassword': pass,
+            'payload': profile.method,
+          }
+        }
+      ]
+    };
+    final jsonStr = const JsonEncoder.withIndent('  ').convert(jsonMap);
+    await Clipboard.setData(ClipboardData(text: jsonStr));
+    _showToast('Configuration JSON SSH copiée !');
+  }
+
+  void _showSshConfigDialog(ImportedVpnServer srv) {
+    final userPass = srv.uuid.split(':');
+    final user = userPass.isNotEmpty ? userPass[0] : 'dany';
+    final pass = userPass.length > 1 ? userPass.sublist(1).join(':') : '#12345';
+
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: cyberCardBg,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: const BorderSide(color: cyberYellow, width: 1.5),
+        ),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: cyberYellow.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.terminal_rounded, color: cyberYellow, size: 22),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Configuration SSH-Payload',
+                style: TextStyle(color: _textPrimary, fontSize: 14, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                srv.name,
+                style: const TextStyle(color: cyberYellow, fontWeight: FontWeight.bold, fontSize: 13),
+              ),
+              const SizedBox(height: 12),
+              _buildSshDetailTile('Serveur SSH', '${srv.address}:${srv.port}'),
+              _buildSshDetailTile('Nom d\'utilisateur', user),
+              _buildSshDetailTile('Mot de passe', pass),
+              _buildSshDetailTile('Protocole', 'SSH Dropbear (Port ${srv.port})'),
+              const SizedBox(height: 8),
+              Text(
+                'Payload HTTP Injection :',
+                style: TextStyle(color: _text54, fontSize: 10, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 4),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: _fieldBackgroundColor,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: _text12),
+                ),
+                child: SelectableText(
+                  srv.method,
+                  style: const TextStyle(color: cyberCyan, fontSize: 9, fontFamily: 'monospace'),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'Cette configuration utilise le protocole SSH avec injection HTTP (Dropbear/WebSocket). Copiez le JSON complet ci-dessous pour l\'injecter dans vos outils compatibles (Peddygist, HTTP Injector, HA Tunnel).',
+                style: TextStyle(color: _text60, fontSize: 10),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('FERMER', style: TextStyle(color: _text60)),
+          ),
+          ElevatedButton.icon(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _copySshJsonConfig(srv);
+            },
+            icon: const Icon(Icons.copy, size: 14),
+            label: const Text('COPIER JSON', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: cyberYellow,
+              foregroundColor: Colors.black,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSshDetailTile(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: TextStyle(color: _text54, fontSize: 10)),
+          SelectableText(
+            value,
+            style: TextStyle(color: _textPrimary, fontSize: 11, fontWeight: FontWeight.bold, fontFamily: 'monospace'),
+          ),
         ],
       ),
     );
@@ -2090,6 +2268,13 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
       return;
     }
 
+    if (currentServer!.protocol.toLowerCase() == 'ssh') {
+      if (mounted) setState(() => isConnecting = false);
+      _userWantedConnection = false;
+      _showSshConfigDialog(currentServer!);
+      return;
+    }
+
     final selectedToken = currentServer!.token;
     final isManagedToken = selectedToken != null &&
         selectedToken != 'CUSTOM-ZERO-TOKEN' &&
@@ -2182,7 +2367,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
     // Shadowsocks natif transporte directement TCP et UDP sur le port 10050.
     final protocol = srv.protocol.toLowerCase();
     final transport = srv.transport.toLowerCase();
-    const supportedProtocols = {'vless', 'vmess', 'trojan', 'shadowsocks', 'wireguard', 'geny'};
+    const supportedProtocols = {'vless', 'vmess', 'trojan', 'shadowsocks', 'wireguard', 'geny', 'ssh'};
     const supportedTransports = {'ws', 'grpc', 'httpupgrade', 'xhttp', 'raw', 'tcp', 'kcp', 'mkcp', 'native'};
 
     if (!supportedProtocols.contains(protocol) || !supportedTransports.contains(transport)) {
@@ -2267,6 +2452,18 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
             }
           ],
           'mtu': 1280
+        };
+        break;
+      case 'ssh':
+        outboundSettings = {
+          'servers': [
+            {
+              'address': srv.address,
+              'port': srv.port,
+              'method': 'aes-128-gcm',
+              'password': srv.uuid
+            }
+          ]
         };
         break;
       default:
@@ -2517,19 +2714,41 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
           final data = jsonDecode(res.body);
           if (data['valid'] == true) {
             final srvConf = data['serverConfig'] ?? {};
+            final isSsh = (data['protocol']?.toString().toUpperCase() == 'SSH') ||
+                (srvConf['protocol']?.toString().toLowerCase() == 'ssh') ||
+                (data['sshConfig'] != null) ||
+                (data['configs'] is List && (data['configs'] as List).isNotEmpty && data['configs'][0]['type'] == 'SSH');
+
+            Map<String, dynamic>? sshConfig;
+            if (data['sshConfig'] is Map) {
+              sshConfig = Map<String, dynamic>.from(data['sshConfig']);
+            } else if (data['configs'] is List && (data['configs'] as List).isNotEmpty && data['configs'][0]['sshConfig'] is Map) {
+              sshConfig = Map<String, dynamic>.from(data['configs'][0]['sshConfig']);
+            }
+
             final newServer = ImportedVpnServer(
-              name: data['plan'] ?? 'ABESS VIP MASTER',
-              address: srvConf['address']?.toString() ?? '',
-              port: srvConf['port'] ?? 443,
+              name: (isSsh && sshConfig != null && (sshConfig['remarks'] ?? '').toString().isNotEmpty)
+                  ? sshConfig['remarks'].toString()
+                  : (data['plan'] ?? 'ABESS VIP MASTER'),
+              address: isSsh && sshConfig != null
+                  ? (sshConfig['sshHost']?.toString() ?? srvConf['address']?.toString() ?? '')
+                  : (srvConf['address']?.toString() ?? ''),
+              port: isSsh && sshConfig != null
+                  ? (int.tryParse(sshConfig['sshPort']?.toString() ?? '') ?? 80)
+                  : (srvConf['port'] ?? 443),
               path: srvConf['path'] ?? '/@abess237',
-              wsHost: (srvConf['host'] ?? srvConf['wsHost'] ?? '').toString(),
+              wsHost: (srvConf['host'] ?? srvConf['wsHost'] ?? (isSsh ? 'm.batch.com' : '')).toString(),
               sni: srvConf['sni']?.toString() ?? (srvConf['address']?.toString() ?? ''),
-              uuid: srvConf['uuid']?.toString() ?? '',
-              protocol: (srvConf['protocol'] as String?) ?? 'vless',
+              uuid: isSsh && sshConfig != null
+                  ? '${sshConfig['sshUsername'] ?? ''}:${sshConfig['sshPassword'] ?? ''}'
+                  : (srvConf['uuid']?.toString() ?? ''),
+              protocol: isSsh ? 'ssh' : ((srvConf['protocol'] as String?) ?? 'vless'),
               transport: (srvConf['transport'] as String?) ?? 'ws',
               allowedDeviceId: srvConf['allowedDeviceId']?.toString(),
-              tls: (srvConf['security']?.toString().toLowerCase() ?? 'tls') != 'none',
-              method: (srvConf['method'] as String?) ?? 'aes-128-gcm',
+              tls: isSsh ? false : ((srvConf['security']?.toString().toLowerCase() ?? 'tls') != 'none'),
+              method: isSsh && sshConfig != null
+                  ? (sshConfig['payload']?.toString() ?? '')
+                  : ((srvConf['method'] as String?) ?? 'aes-128-gcm'),
               bandwidthGb: (data['bandwidthGb'] as num?)?.toDouble() ?? 10.0,
               bandwidthUsedGb: (data['bandwidthUsedGb'] as num?)?.toDouble() ?? 0.0,
               expiresAt: DateTime.tryParse(data['expiresAt'] ?? '') ?? DateTime.now().add(Duration(days: 30)),
@@ -2544,7 +2763,11 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
                 newServer.sni.toLowerCase() != apiTlsHost) {
               _addLog('ALERTE TLS : SNI ${newServer.sni} différent du domaine HTTPS ${apiTlsHost}. Le certificat peut être refusé et aucun trafic ne passera. Recréez le profil avec le SNI couvert par le certificat.');
             }
-            _addLog('PROFIL IMPORTÉ : ${newServer.address}:${newServer.port} • ${newServer.protocol.toUpperCase()}/${newServer.transport.toUpperCase()} • Host HTTP : ${newServer.wsHost.isEmpty ? '(destination)' : newServer.wsHost} • SNI : ${newServer.sni}');
+            if (isSsh) {
+              _addLog('PROFIL SSH-PAYLOAD IMPORTÉ : ${newServer.name} (${newServer.address}:${newServer.port})');
+            } else {
+              _addLog('PROFIL IMPORTÉ : ${newServer.address}:${newServer.port} • ${newServer.protocol.toUpperCase()}/${newServer.transport.toUpperCase()} • Host HTTP : ${newServer.wsHost.isEmpty ? '(destination)' : newServer.wsHost} • SNI : ${newServer.sni}');
+            }
             await _storeAndSelectServer(newServer);
             _addLog('SERVEUR MAÎTRE VALIDÉ (${newServer.bandwidthGb} Go • Expiration: ${_formatRemaining(newServer.expiresAt)})');
             return;
@@ -3507,6 +3730,70 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
             ),
           ],
 
+          if (srv != null && srv.protocol.toLowerCase() == 'ssh') ...[
+            Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(bottom: 14),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: cyberYellow.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: cyberYellow.withOpacity(0.4)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.terminal_rounded, color: cyberYellow, size: 18),
+                      const SizedBox(width: 8),
+                      const Expanded(
+                        child: Text(
+                          "PROFIL SSH-PAYLOAD (DROPBEAR)",
+                          style: TextStyle(color: cyberYellow, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.8),
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: "Copier la config JSON SSH",
+                        onPressed: () => _copySshJsonConfig(srv),
+                        icon: const Icon(Icons.copy, color: cyberYellow, size: 16),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    "Serveur: ${srv.address}:${srv.port}  •  Utilisateur: ${srv.uuid.split(':').first}",
+                    style: TextStyle(color: _textPrimary, fontSize: 10, fontFamily: "monospace"),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    "Payload: ${srv.method.replaceAll('\r', '').replaceAll('\n', ' ')}",
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: _text60, fontSize: 9, fontFamily: "monospace"),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () => _copySshJsonConfig(srv),
+                      icon: const Icon(Icons.code, size: 14),
+                      label: const Text("COPIER CONFIG JSON (PEDDYGIST / SSH)", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: cyberYellow,
+                        foregroundColor: Colors.black,
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+
           // ==========================================
           // ANIMATED QUANTUM REACTOR POWER STAGE
           // ==========================================
@@ -4197,7 +4484,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
           controller: ctrl,
           style: TextStyle(color: _textPrimary, fontSize: 12, fontFamily: "monospace"),
           decoration: InputDecoration(
-            hintText: "abess://... ou vless://...",
+            hintText: "abess://..., JSON SSH-Payload, vless://...",
             hintStyle: TextStyle(color: _text30, fontSize: 11),
             filled: true,
             fillColor: _fieldBackgroundColor,
