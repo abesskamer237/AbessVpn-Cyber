@@ -287,6 +287,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
   // NAVIGATION (3 ONGLETS : CONNEXION, SERVEURS & FORFAITS, OUTILS & DIAGNOSTIC)
   int _currentNavIndex = 0;
   bool _isMuxEnabled = true;
+  bool _isAntiAdDnsEnabled = true;
 
   String _newUuid() {
     final rand = math.Random.secure();
@@ -2216,6 +2217,300 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
     );
   }
 
+  void _showDiagnosticModal() {
+    if (!mounted) return;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (modalCtx, setMState) {
+            bool isDiagnosing = false;
+            String? dnsResult;
+            String? apiPingResult;
+            String? socketResult;
+            String? tokenResult;
+            bool? dnsOk;
+            bool? apiOk;
+            bool? socketOk;
+            bool? tokenOk;
+            String overallVerdict = '';
+
+            Future<void> runDiagnostic() async {
+              setMState(() {
+                isDiagnosing = true;
+                dnsResult = 'Résolution en cours...';
+                apiPingResult = 'Test en cours...';
+                socketResult = 'Handshake en cours...';
+                tokenResult = 'Validation...';
+                dnsOk = null;
+                apiOk = null;
+                socketOk = null;
+                tokenOk = null;
+                overallVerdict = '';
+              });
+
+              final host = currentServer?.address.isNotEmpty == true
+                  ? currentServer!.address
+                  : (_masterServerUrls.isNotEmpty ? Uri.parse(_masterServerUrls[0]).host : 'server.nexustunnel.me');
+              final port = currentServer?.port ?? 80;
+
+              // 1. DNS Resolution
+              try {
+                final swDns = Stopwatch()..start();
+                final addrs = await InternetAddress.lookup(host).timeout(Duration(seconds: 4));
+                swDns.stop();
+                if (addrs.isNotEmpty) {
+                  dnsOk = true;
+                  dnsResult = '${addrs.first.address} (${swDns.elapsedMilliseconds} ms)';
+                } else {
+                  dnsOk = false;
+                  dnsResult = 'Aucune adresse IP trouvée';
+                }
+              } catch (e) {
+                dnsOk = false;
+                dnsResult = 'Échec DNS (${e.toString().split(':').first})';
+              }
+
+              // 2. Master Panel Ping
+              try {
+                if (_masterServerUrls.isNotEmpty) {
+                  final swApi = Stopwatch()..start();
+                  final res = await http.get(Uri.parse('${_masterServerUrls[0]}/api/v1/ping')).timeout(Duration(seconds: 4));
+                  swApi.stop();
+                  if (res.statusCode == 200) {
+                    apiOk = true;
+                    apiPingResult = 'Opérationnel (${swApi.elapsedMilliseconds} ms)';
+                  } else {
+                    apiOk = false;
+                    apiPingResult = 'HTTP ${res.statusCode}';
+                  }
+                } else {
+                  apiOk = false;
+                  apiPingResult = 'Serveur non configuré';
+                }
+              } catch (_) {
+                apiOk = false;
+                apiPingResult = 'Inaccessible ou délai dépassé';
+              }
+
+              // 3. Socket Handshake
+              try {
+                final swSock = Stopwatch()..start();
+                final socket = await Socket.connect(host, port, timeout: Duration(seconds: 4));
+                swSock.stop();
+                socket.destroy();
+                socketOk = true;
+                socketResult = 'Port $port ouvert (${swSock.elapsedMilliseconds} ms)';
+              } catch (e) {
+                socketOk = false;
+                socketResult = 'Port $port inaccessible';
+              }
+
+              // 4. Token & Licence Status
+              if (currentServer != null && currentServer!.token?.isNotEmpty == true) {
+                final now = DateTime.now();
+                final days = currentServer!.expiresAt.difference(now).inDays;
+                final quotaLeft = math.max(0.0, currentServer!.bandwidthGb - currentServer!.bandwidthUsedGb);
+                if (days > 0 && quotaLeft > 0) {
+                  tokenOk = true;
+                  tokenResult = '$days j restants • ${quotaLeft.toStringAsFixed(1)} Go';
+                } else {
+                  tokenOk = false;
+                  tokenResult = days <= 0 ? 'Expiré' : 'Quota épuisé';
+                }
+              } else {
+                tokenOk = false;
+                tokenResult = 'Aucun token actif';
+              }
+
+              setMState(() {
+                isDiagnosing = false;
+                final allGood = (dnsOk == true) && (apiOk == true) && (socketOk == true) && (tokenOk == true);
+                if (allGood) {
+                  overallVerdict = 'Réseau 100% opérationnel. Prêt pour la connexion haute vitesse.';
+                } else if (dnsOk == false) {
+                  overallVerdict = 'Problème de réseau local ou blocage DNS par l’opérateur FAI.';
+                } else if (socketOk == false) {
+                  overallVerdict = 'Le port $port est bloqué ou inaccessible sur votre connexion.';
+                } else if (tokenOk == false) {
+                  overallVerdict = 'Votre licence token nécessite un renouvellement ou une recharge.';
+                } else {
+                  overallVerdict = 'Le serveur maître répond lentement ou est en maintenance.';
+                }
+              });
+
+              _addLog('[DIAGNOSTIC] DNS: $dnsResult • API: $apiPingResult • Port $port: $socketResult');
+            }
+
+            return Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Color(0xFF060D1D),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                border: Border(top: BorderSide(color: cyberGreen, width: 2)),
+              ),
+              child: SafeArea(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(color: _text24, borderRadius: BorderRadius.circular(2)),
+                    ),
+                    SizedBox(height: 14),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.health_and_safety_outlined, color: cyberGreen, size: 22),
+                        SizedBox(width: 8),
+                        Text(
+                          'DIAGNOSTIC TECHNIQUE COMPLET',
+                          style: TextStyle(color: _textPrimary, fontSize: 14, fontWeight: FontWeight.bold, letterSpacing: 1.2),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 6),
+                    Text(
+                      'Test bout-en-bout : DNS, API Maître, Port Réseau et Licence',
+                      style: TextStyle(color: _text54, fontSize: 10),
+                    ),
+                    SizedBox(height: 16),
+                    _buildDiagItem('1. Résolution DNS Hôte', dnsResult ?? 'Non testé', dnsOk),
+                    SizedBox(height: 8),
+                    _buildDiagItem('2. Passerelle Serveur (API)', apiPingResult ?? 'Non testé', apiOk),
+                    SizedBox(height: 8),
+                    _buildDiagItem('3. Handshake Port (${currentServer?.port ?? 80})', socketResult ?? 'Non testé', socketOk),
+                    SizedBox(height: 8),
+                    _buildDiagItem('4. Licence & Forfait', tokenResult ?? 'Non testé', tokenOk),
+                    if (overallVerdict.isNotEmpty) ...[
+                      SizedBox(height: 14),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: (overallVerdict.contains('100%') ? cyberGreen : cyberYellow).withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: (overallVerdict.contains('100%') ? cyberGreen : cyberYellow).withOpacity(0.4),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              overallVerdict.contains('100%') ? Icons.check_circle : Icons.info_outline,
+                              color: overallVerdict.contains('100%') ? cyberGreen : cyberYellow,
+                              size: 18,
+                            ),
+                            SizedBox(width: 8),
+                            Expanded(
+                              child: Text(overallVerdict, style: TextStyle(color: _textPrimary, fontSize: 10, height: 1.3)),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                    SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: isDiagnosing ? null : runDiagnostic,
+                            icon: isDiagnosing
+                                ? SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
+                                : Icon(Icons.refresh, color: Colors.black, size: 16),
+                            label: Text(
+                              isDiagnosing ? 'DIAGNOSTIC EN COURS...' : 'LANCER LE DIAGNOSTIC',
+                              style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 11),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: cyberGreen,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                          ),
+                        ),
+                        if (dnsResult != null) ...[
+                          SizedBox(width: 8),
+                          OutlinedButton.icon(
+                            onPressed: () {
+                              final host = currentServer?.address ?? 'server.nexustunnel.me';
+                              final report = '--- RAPPORT DIAGNOSTIC ABESSVPN ---\n'
+                                  'Date: ${DateTime.now().toIso8601String()}\n'
+                                  'Cible: $host:${currentServer?.port ?? 80}\n'
+                                  'DNS: $dnsResult\n'
+                                  'API: $apiPingResult\n'
+                                  'Port: $socketResult\n'
+                                  'Token: $tokenResult\n'
+                                  'Verdict: $overallVerdict\n'
+                                  '------------------------------------';
+                              Clipboard.setData(ClipboardData(text: report));
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Rapport copié dans le presse-papiers pour le support !')),
+                              );
+                            },
+                            icon: Icon(Icons.copy, color: cyberCyan, size: 16),
+                            label: Text('COPIER', style: TextStyle(color: cyberCyan, fontSize: 11)),
+                            style: OutlinedButton.styleFrom(
+                              side: BorderSide(color: cyberCyan.withOpacity(0.5)),
+                              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildDiagItem(String title, String value, bool? ok) {
+    Color color = _text54;
+    IconData icon = Icons.help_outline;
+    if (ok == true) {
+      color = cyberGreen;
+      icon = Icons.check_circle;
+    } else if (ok == false) {
+      color = cyberRed;
+      icon = Icons.cancel;
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: _fieldBackgroundColor,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: color, size: 16),
+              SizedBox(width: 8),
+              Text(title, style: TextStyle(color: _textPrimary, fontSize: 11, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          Flexible(
+            child: Text(
+              value,
+              textAlign: TextAlign.end,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: color, fontSize: 11, fontFamily: 'monospace'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<bool> _isManagedDataPlaneReady() async {
     for (final base in _masterServerUrls) {
       try {
@@ -2578,6 +2873,15 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
 
     return {
       'log': {'loglevel': 'warning'},
+      'dns': {
+        'servers': _isAntiAdDnsEnabled
+            ? [
+                'https://dns.adguard-dns.com/dns-query',
+                '1.1.1.1',
+                '8.8.8.8'
+              ]
+            : ['1.1.1.1', '8.8.8.8']
+      },
       'inbounds': [
         {
           'tag': 'socks-in',
@@ -4599,6 +4903,47 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
             decoration: BoxDecoration(
               color: cyberCardBg,
               borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: cyberGreen.withOpacity(0.35)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.health_and_safety_outlined, color: cyberGreen, size: 18),
+                        SizedBox(width: 8),
+                        Text("DIAGNOSTIC TECHNIQUE 1-CLIC", style: TextStyle(color: _textPrimary, fontWeight: FontWeight.bold, fontSize: 13)),
+                      ],
+                    ),
+                    ElevatedButton(
+                      onPressed: _showDiagnosticModal,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: cyberGreen,
+                        foregroundColor: Colors.black,
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        minimumSize: Size.zero,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                      ),
+                      child: Text("DIAGNOSTIQUER", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                    ),
+                  ],
+                ),
+                SizedBox(height: 6),
+                Text("Vérifie DNS, passerelle API, handshake port réseau et génère un rapport technique pour le support.", style: TextStyle(color: _text60, fontSize: 10)),
+              ],
+            ),
+          ),
+          SizedBox(height: 14),
+
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: cyberCardBg,
+              borderRadius: BorderRadius.circular(16),
               border: Border.all(color: _text10),
             ),
             child: Column(
@@ -4606,6 +4951,16 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
               children: [
                 Text("PARAMÈTRES DE PERFORMANCE & STABILITÉ", style: TextStyle(color: _text70, fontSize: 11, fontWeight: FontWeight.bold)),
                 SizedBox(height: 12),
+
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: _isAntiAdDnsEnabled,
+                  onChanged: (val) => setState(() => _isAntiAdDnsEnabled = val),
+                  activeTrackColor: cyberGreen,
+                  title: Text("DNS Sécurisé Anti-Pub (AdGuard DoH)", style: TextStyle(color: _textPrimary, fontSize: 12, fontWeight: FontWeight.bold)),
+                  subtitle: Text("Bloque automatiquement les pubs, traceurs et contourne les restrictions DNS FAI.", style: TextStyle(color: _text54, fontSize: 10)),
+                ),
+                Divider(color: _text12),
 
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
