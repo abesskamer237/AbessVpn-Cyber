@@ -17,8 +17,19 @@ import 'package:fl_chart/fl_chart.dart';
 
 final ValueNotifier<bool> abessDarkMode = ValueNotifier<bool>(true);
 
+class _AbessHttpOverrides extends HttpOverrides {
+  @override
+  HttpClient createHttpClient(SecurityContext? context) {
+    return super.createHttpClient(context)
+      ..badCertificateCallback = (X509Certificate cert, String host, int port) {
+        return host == '152.70.40.192' || host == 'server.nexustunnel.me' || host == '79.76.109.186';
+      };
+  }
+}
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  HttpOverrides.global = _AbessHttpOverrides();
   final prefs = await SharedPreferences.getInstance();
   abessDarkMode.value = prefs.getBool('abess_dark_mode') ?? true;
   SystemChrome.setPreferredOrientations([
@@ -598,7 +609,9 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
     }
     const robustDefaults = [
       'https://server.nexustunnel.me:2096',
+      'https://server.nexustunnel.me',
       'https://152.70.40.192:2096',
+      'https://152.70.40.192',
     ];
     for (final def in robustDefaults) {
       if (!list.contains(def)) list.add(def);
