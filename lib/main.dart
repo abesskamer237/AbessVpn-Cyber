@@ -27,6 +27,17 @@ class _AbessHttpOverrides extends HttpOverrides {
   }
 }
 
+/// Générateur standardisé de tokens unifiés ABESS-XXXXXXXXXXX
+String generateUnifiedToken() {
+  const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+  final rand = math.Random.secure();
+  final buffer = StringBuffer('ABESS-');
+  for (var i = 0; i < 11; i++) {
+    buffer.write(chars[rand.nextInt(chars.length)]);
+  }
+  return buffer.toString();
+}
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   HttpOverrides.global = _AbessHttpOverrides();
@@ -2781,6 +2792,14 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
             ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${data['error']}')));
           }
           return;
+        } else if (res.statusCode == 429) {
+          final data = jsonDecode(res.body);
+          final message = data['error']?.toString() ?? 'Trop de requêtes. Veuillez patienter avant de réessayer.';
+          _addLog('LIMITE DE REQUÊTES : $message');
+          if (mounted && !silent) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), backgroundColor: Colors.orange));
+          }
+          return;
         } else if (res.statusCode == 503) {
           final data = jsonDecode(res.body);
           final message = data['error']?.toString() ?? 'Configuration serveur indisponible.';
@@ -3250,7 +3269,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
   // Modale de Création de Configuration & Token (Fixer Gigas & Expiration)
   void _showCreateConfigModal() {
     if (!mounted) return;
-    _createTokenCodeCtrl.text = 'ABESS-VIP-${math.Random().nextInt(8999) + 1000}';
+    _createTokenCodeCtrl.text = generateUnifiedToken();
     showModalBottomSheet(
       context: context,
       backgroundColor: cyberCardBg,
@@ -3289,7 +3308,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
                   ),
                 ),
                 SizedBox(height: 10),
-                Text('2. CODE TOKEN', style: TextStyle(color: _text70, fontSize: 10)),
+                Text('2. CODE TOKEN (UNIFIÉ ABESS-XXXXXXXXXXX)', style: TextStyle(color: _text70, fontSize: 10)),
                 SizedBox(height: 4),
                 TextField(
                   controller: _createTokenCodeCtrl,
@@ -3298,6 +3317,15 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
                     filled: true,
                     fillColor: _fieldFillColor,
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    suffixIcon: IconButton(
+                      icon: const Icon(Icons.refresh, color: cyberGreen, size: 18),
+                      tooltip: 'Générer un nouveau code token',
+                      onPressed: () {
+                        setMState(() {
+                          _createTokenCodeCtrl.text = generateUnifiedToken();
+                        });
+                      },
+                    ),
                   ),
                 ),
                 SizedBox(height: 14),
@@ -4332,7 +4360,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
                         controller: _tokenInputCtrl,
                         style: const TextStyle(color: cyberGreen, fontFamily: "monospace", fontSize: 12),
                         decoration: InputDecoration(
-                          hintText: "EX: ABESS-VIP-ROOT-2026",
+                          hintText: "EX: ABESS-7B2K9X4M1Q8",
                           hintStyle: TextStyle(color: _text30, fontSize: 11),
                           filled: true,
                           fillColor: _fieldBackgroundColor,
