@@ -112,10 +112,10 @@ jobs:
           REF_TYPE: ${{ github.ref_type }}
         run: |
           set -euo pipefail
-          VPN_DOMAIN="${VPN_DOMAIN:-server.nexustunnel.me:2096}"
+          VPN_DOMAIN="${VPN_DOMAIN:-panel.pagnol.xyz}"
           if ! [[ "$VPN_DOMAIN" =~ ^[A-Za-z0-9.:-]+$ ]]; then
-            echo "Invalid VPN_DOMAIN format: $VPN_DOMAIN, falling back to server.nexustunnel.me:2096" >&2
-            VPN_DOMAIN="server.nexustunnel.me:2096"
+            echo "Invalid VPN_DOMAIN format: $VPN_DOMAIN, falling back to panel.pagnol.xyz" >&2
+            VPN_DOMAIN="panel.pagnol.xyz"
           fi
           # Obfuscate Dart symbols in the distributed APK. Keep symbols in the
           # runner workspace for private diagnostics; never publish them as an artifact.
