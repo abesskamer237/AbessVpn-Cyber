@@ -155,6 +155,7 @@ class AbessVpnApp extends StatelessWidget {
       valueListenable: abessDarkMode,
       builder: (context, isDarkMode, _) {
         final brightness = isDarkMode ? Brightness.dark : Brightness.light;
+        final baseTheme = isDarkMode ? ThemeData.dark() : ThemeData.light();
         return MaterialApp(
           title: 'AbessVpn',
           debugShowCheckedModeBanner: false,
@@ -166,11 +167,33 @@ class AbessVpnApp extends StatelessWidget {
               seedColor: isDarkMode ? const Color(0xFF10B981) : const Color(0xFF047857),
               brightness: brightness,
             ),
-            textTheme: GoogleFonts.orbitronTextTheme(
-              (isDarkMode ? ThemeData.dark() : ThemeData.light()).textTheme,
+            textTheme: GoogleFonts.rajdhaniTextTheme(baseTheme.textTheme).copyWith(
+              titleLarge: GoogleFonts.orbitron(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 1.2,
+                color: isDarkMode ? Colors.white : const Color(0xFF0F172A),
+              ),
+              titleMedium: GoogleFonts.orbitron(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 1.0,
+                color: isDarkMode ? Colors.white : const Color(0xFF0F172A),
+              ),
+              titleSmall: GoogleFonts.orbitron(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.8,
+                color: isDarkMode ? Colors.white : const Color(0xFF0F172A),
+              ),
+              labelLarge: GoogleFonts.orbitron(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 1.0,
+              ),
             ),
           ),
-          home: MainVpnScreen(),
+          home: const MainVpnScreen(),
         );
       },
     );
@@ -667,6 +690,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
 
   late AnimationController _pulseController;
   late AnimationController _rotateController;
+  bool _isReactorPressed = false;
 
   @override
   void initState() {
@@ -1488,6 +1512,17 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
     _showToast('Configuration supprimée de cet appareil.');
   }
 
+  Color _protocolColor(String proto) {
+    switch (proto.toLowerCase()) {
+      case 'vless': return cyberCyan;
+      case 'vmess': return const Color(0xFFA855F7);
+      case 'trojan': return const Color(0xFFF97316);
+      case 'ssh': return cyberYellow;
+      case 'shadowsocks': case 'ss': return cyberGreen;
+      default: return cyberCyan;
+    }
+  }
+
   Widget _buildSavedProfilesSection() {
     return Container(
       width: double.infinity,
@@ -1496,55 +1531,128 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
         color: cyberCardBg,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: cyberCyan.withOpacity(0.4)),
+        boxShadow: [
+          BoxShadow(color: cyberCyan.withOpacity(0.06), blurRadius: 12, offset: const Offset(0, 3)),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(Icons.dns_outlined, color: cyberCyan, size: 18),
-              SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: cyberCyan.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.dns_outlined, color: cyberCyan, size: 16),
+              ),
+              const SizedBox(width: 8),
               Expanded(
                 child: Text('MES CONFIGURATIONS', style: TextStyle(color: _textPrimary, fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 1)),
               ),
-              Text('${savedServers.length}', style: TextStyle(color: cyberCyan, fontSize: 12, fontWeight: FontWeight.bold)),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: cyberCyan.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: cyberCyan.withOpacity(0.4)),
+                ),
+                child: Text('${savedServers.length}', style: const TextStyle(color: cyberCyan, fontSize: 11, fontWeight: FontWeight.bold)),
+              ),
             ],
           ),
-          SizedBox(height: 8),
+          const SizedBox(height: 10),
           if (savedServers.isEmpty)
             Padding(
-              padding: EdgeInsets.symmetric(vertical: 8),
-              child: Text('Aucune configuration enregistrée. Ajoutez un token ou importez un lien ci-dessous.', style: TextStyle(color: _text54, fontSize: 10)),
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Center(
+                child: Text(
+                  'Aucune configuration enregistrée.\nActivez un token ou importez un lien ci-dessous.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: _text54, fontSize: 11),
+                ),
+              ),
             )
           else
             ...savedServers.map((profile) {
               final selected = currentServer?.id == profile.id;
+              final protoColor = _protocolColor(profile.protocol);
               return Container(
-                margin: const EdgeInsets.only(top: 6),
+                margin: const EdgeInsets.only(top: 8),
                 decoration: BoxDecoration(
                   color: selected ? cyberGreen.withOpacity(0.10) : _fieldBackgroundColor,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: selected ? cyberGreen : _text12),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: selected ? cyberGreen : _text12,
+                    width: selected ? 1.5 : 1.0,
+                  ),
+                  boxShadow: selected
+                      ? [BoxShadow(color: cyberGreen.withOpacity(0.12), blurRadius: 10, offset: const Offset(0, 2))]
+                      : null,
                 ),
                 child: Row(
                   children: [
                     Expanded(
                       child: InkWell(
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius: BorderRadius.circular(12),
                         onTap: () => unawaited(_selectSavedServer(profile)),
                         child: Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                           child: Row(
                             children: [
-                              Icon(selected ? Icons.radio_button_checked : Icons.radio_button_off, color: selected ? cyberGreen : _text38, size: 18),
-                              SizedBox(width: 8),
+                              Icon(
+                                selected ? Icons.radio_button_checked : Icons.radio_button_off,
+                                color: selected ? cyberGreen : _text38,
+                                size: 18,
+                              ),
+                              const SizedBox(width: 8),
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(profile.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: selected ? cyberGreen : _textPrimary, fontSize: 11, fontWeight: FontWeight.bold)),
-                                    SizedBox(height: 3),
-                                    Text('${profile.protocol.toUpperCase()} · ${profile.transport.toUpperCase()} · ${profile.tls ? "TLS" : "sans TLS"} · ${profile.address}:${profile.port}', maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: _text54, fontSize: 9)),
+                                    Row(
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                          decoration: BoxDecoration(
+                                            color: protoColor.withOpacity(0.16),
+                                            borderRadius: BorderRadius.circular(4),
+                                            border: Border.all(color: protoColor.withOpacity(0.5), width: 0.8),
+                                          ),
+                                          child: Text(
+                                            profile.protocol.toUpperCase(),
+                                            style: TextStyle(
+                                              color: protoColor,
+                                              fontSize: 8.5,
+                                              fontWeight: FontWeight.bold,
+                                              letterSpacing: 0.5,
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Expanded(
+                                          child: Text(
+                                            profile.name,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              color: selected ? cyberGreen : _textPrimary,
+                                              fontSize: 11.5,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 3),
+                                    Text(
+                                      '${profile.transport.toUpperCase()} · ${profile.tls ? "TLS" : "DIRECT"} · ${profile.address}:${profile.port}',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(color: _text54, fontSize: 9.5),
+                                    ),
                                   ],
                                 ),
                               ),
@@ -1557,12 +1665,12 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
                       IconButton(
                         tooltip: 'Copier la configuration JSON SSH',
                         onPressed: () => _copySshJsonConfig(profile),
-                        icon: const Icon(Icons.code, color: cyberYellow, size: 19),
+                        icon: const Icon(Icons.code, color: cyberYellow, size: 18),
                       ),
                     IconButton(
                       tooltip: 'Supprimer cette configuration',
                       onPressed: () => unawaited(_deleteSavedServer(profile)),
-                      icon: Icon(Icons.delete_outline, color: cyberRed, size: 19),
+                      icon: Icon(Icons.delete_outline, color: cyberRed, size: 18),
                     ),
                   ],
                 ),
@@ -3755,20 +3863,24 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
             Container(
               padding: const EdgeInsets.all(6),
               decoration: BoxDecoration(
-                color: cyberGreen.withOpacity( 0.15),
+                color: cyberGreen.withOpacity(0.15),
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: cyberGreen.withOpacity( 0.4)),
+                border: Border.all(color: cyberGreen.withOpacity(0.4)),
               ),
-              child: Icon(Icons.shield, color: cyberGreen, size: 20),
+              child: const Icon(Icons.shield, color: cyberGreen, size: 20),
             ),
-            SizedBox(width: 10),
-            Text(
-              _currentNavIndex == 0
-                  ? "AbessVpn"
-                  : _currentNavIndex == 1
-                      ? "Serveurs & Tokens"
-                      : "Outils & Diagnostic",
-              style: TextStyle(color: _textPrimary, fontWeight: FontWeight.bold, fontSize: 17),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                _currentNavIndex == 0
+                    ? "AbessVpn"
+                    : _currentNavIndex == 1
+                        ? "Serveurs & Tokens"
+                        : "Outils & Diagnostic",
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: _textPrimary, fontWeight: FontWeight.bold, fontSize: 16),
+              ),
             ),
           ],
         ),
@@ -3784,27 +3896,18 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
                     right: -2,
                     top: -2,
                     child: Container(
-                      width: 8,
-                      height: 8,
-                      decoration: const BoxDecoration(
+                      width: 9,
+                      height: 9,
+                      decoration: BoxDecoration(
                         color: Colors.redAccent,
                         shape: BoxShape.circle,
+                        border: Border.all(color: cyberCardBg, width: 1.5),
                       ),
                     ),
                   ),
               ],
             ),
             tooltip: "📢 Annonces du Réseau",
-          ),
-          IconButton(
-            onPressed: () => _openUrlSafe(_telegramChannelUrl),
-            icon: Icon(Icons.send_rounded, color: cyberCyan),
-            tooltip: "Canal Telegram Officiel (@Abess_Vpn)",
-          ),
-          IconButton(
-            onPressed: () => _openUrlSafe(_whatsappSupportUrl),
-            icon: Icon(Icons.chat_bubble_outline, color: cyberGreen),
-            tooltip: "Support WhatsApp ($_whatsappSupportPhone)",
           ),
           IconButton(
             onPressed: () async {
@@ -3816,10 +3919,74 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
             icon: Icon(abessDarkMode.value ? Icons.light_mode : Icons.dark_mode, color: cyberYellow),
             tooltip: abessDarkMode.value ? 'Mode clair' : 'Mode sombre',
           ),
-          IconButton(
-            onPressed: _showSpeedTestModal,
-            icon: Icon(Icons.speed, color: cyberCyan),
-            tooltip: "Speed Test",
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert, color: cyberCyan),
+            tooltip: "Menu Options Rapides",
+            color: cyberCardBg,
+            elevation: 8,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+              side: BorderSide(color: cyberCyan.withOpacity(0.4), width: 1),
+            ),
+            onSelected: (value) {
+              switch (value) {
+                case 'speedtest':
+                  _showSpeedTestModal();
+                  break;
+                case 'telegram':
+                  _openUrlSafe(_telegramChannelUrl);
+                  break;
+                case 'whatsapp':
+                  _openUrlSafe(_whatsappSupportUrl);
+                  break;
+                case 'update':
+                  _checkForAppUpdate(showUpToDate: true);
+                  break;
+              }
+            },
+            itemBuilder: (ctx) => [
+              PopupMenuItem(
+                value: 'speedtest',
+                child: Row(
+                  children: [
+                    const Icon(Icons.speed, color: cyberCyan, size: 18),
+                    const SizedBox(width: 10),
+                    Text('Speed Test Cyber', style: TextStyle(color: _textPrimary, fontSize: 12, fontWeight: FontWeight.bold)),
+                  ],
+                ),
+              ),
+              PopupMenuItem(
+                value: 'telegram',
+                child: Row(
+                  children: [
+                    const Icon(Icons.send_rounded, color: cyberCyan, size: 18),
+                    const SizedBox(width: 10),
+                    Text('Canal Telegram', style: TextStyle(color: _textPrimary, fontSize: 12)),
+                  ],
+                ),
+              ),
+              PopupMenuItem(
+                value: 'whatsapp',
+                child: Row(
+                  children: [
+                    const Icon(Icons.chat_bubble_outline, color: cyberGreen, size: 18),
+                    const SizedBox(width: 10),
+                    Text('Support WhatsApp', style: TextStyle(color: _textPrimary, fontSize: 12)),
+                  ],
+                ),
+              ),
+              const PopupMenuDivider(),
+              PopupMenuItem(
+                value: 'update',
+                child: Row(
+                  children: [
+                    const Icon(Icons.system_update_alt, color: cyberYellow, size: 18),
+                    const SizedBox(width: 10),
+                    Text('Vérifier Mises à jour', style: TextStyle(color: _textPrimary, fontSize: 12)),
+                  ],
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -4129,188 +4296,231 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
           // ==========================================
           // ANIMATED QUANTUM REACTOR POWER STAGE
           // ==========================================
-          GestureDetector(
-            onTap: isConnecting ? null : _toggleVpn,
-            child: AnimatedBuilder(
-              animation: Listenable.merge([_pulseController, _rotateController]),
-              builder: (ctx, child) {
-                final pulseVal = isConnected ? _pulseController.value : (isConnecting ? _pulseController.value * 0.8 : 0.0);
-                final rotateAngle = _rotateController.value * 2 * math.pi;
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final double outerSize = math.min(math.max(constraints.maxWidth * 0.48, 150.0), 195.0);
+              final double auraSize = outerSize * 0.86;
+              final double coreSize = outerSize * 0.74;
 
-                final Color coreColor = isConnected
-                    ? cyberGreen
-                    : isConnecting
-                        ? cyberYellow
-                        : (srv != null ? cyberCyan : _text38);
+              return GestureDetector(
+                onTapDown: (_) => setState(() => _isReactorPressed = true),
+                onTapUp: (_) => setState(() => _isReactorPressed = false),
+                onTapCancel: () => setState(() => _isReactorPressed = false),
+                onTap: isConnecting ? null : _toggleVpn,
+                child: AnimatedScale(
+                  scale: _isReactorPressed ? 0.94 : 1.0,
+                  duration: const Duration(milliseconds: 110),
+                  curve: Curves.easeInOut,
+                  child: AnimatedBuilder(
+                    animation: Listenable.merge([_pulseController, _rotateController]),
+                    builder: (ctx, child) {
+                      final pulseVal = isConnected ? _pulseController.value : (isConnecting ? _pulseController.value * 0.8 : 0.0);
+                      final rotateAngle = _rotateController.value * 2 * math.pi;
 
-                return Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    // Outer rotating cybernetic orbital ring with tracker dots
-                    Transform.rotate(
-                      angle: rotateAngle,
-                      child: Container(
-                        width: 195,
-                        height: 195,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: coreColor.withOpacity(isConnected ? 0.45 : (isConnecting ? 0.35 : 0.12)),
-                            width: 1.5,
-                          ),
-                        ),
-                        child: Stack(
-                          children: [
-                            Positioned(
-                              top: 0,
-                              left: 92,
-                              child: Container(
-                                width: 10,
-                                height: 10,
-                                decoration: BoxDecoration(
-                                  color: coreColor,
-                                  shape: BoxShape.circle,
-                                  boxShadow: [
-                                    BoxShadow(color: coreColor, blurRadius: 8, spreadRadius: 2),
-                                  ],
+                      final Color coreColor = isConnected
+                          ? cyberGreen
+                          : isConnecting
+                              ? cyberYellow
+                              : (srv != null ? cyberCyan : _text38);
+
+                      return Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          // Outer rotating cybernetic orbital ring with 3 glowing satellite nodes
+                          Transform.rotate(
+                            angle: rotateAngle,
+                            child: Container(
+                              width: outerSize,
+                              height: outerSize,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: coreColor.withOpacity(isConnected ? 0.45 : (isConnecting ? 0.35 : 0.12)),
+                                  width: 1.5,
                                 ),
                               ),
-                            ),
-                            Positioned(
-                              bottom: 0,
-                              right: 92,
-                              child: Container(
-                                width: 6,
-                                height: 6,
-                                decoration: BoxDecoration(
-                                  color: coreColor.withOpacity(0.7),
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-
-                    // Middle pulsing aura ring
-                    Container(
-                      width: 170 + (pulseVal * 14),
-                      height: 170 + (pulseVal * 14),
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.transparent,
-                        border: Border.all(
-                          color: coreColor.withOpacity(0.25 + (pulseVal * 0.3)),
-                          width: 2,
-                        ),
-                        boxShadow: [
-                          if (isConnected || isConnecting)
-                            BoxShadow(
-                              color: coreColor.withOpacity(0.25 + (pulseVal * 0.35)),
-                              blurRadius: 35,
-                              spreadRadius: 4 + (pulseVal * 6),
-                            ),
-                        ],
-                      ),
-                    ),
-
-                    // Inner Power Reactor Core
-                    Container(
-                      width: 150,
-                      height: 150,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: RadialGradient(
-                          colors: isConnected
-                              ? [
-                                  Color.lerp(const Color(0xFF065F46), const Color(0xFF047857), pulseVal)!,
-                                  const Color(0xFF022C22),
-                                ]
-                              : isConnecting
-                                  ? [
-                                      Color.lerp(const Color(0xFFB45309), const Color(0xFFD97706), pulseVal)!,
-                                      const Color(0xFF451A03),
-                                    ]
-                                  : [
-                                      const Color(0xFF1E293B),
-                                      const Color(0xFF090E17),
-                                    ],
-                          center: Alignment.center,
-                          radius: 0.85,
-                        ),
-                        border: Border.all(
-                          color: coreColor,
-                          width: 3.5,
-                        ),
-                      ),
-                      child: Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            if (isConnecting)
-                              const SizedBox(
-                                width: 42,
-                                height: 42,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 3.5,
-                                  valueColor: AlwaysStoppedAnimation<Color>(cyberYellow),
-                                ),
-                              )
-                            else
-                              Icon(
-                                Icons.power_settings_new_rounded,
-                                size: 48,
-                                color: isConnected ? Colors.white : (srv != null ? cyberCyan : _text38),
-                              ),
-                            const SizedBox(height: 6),
-                            Text(
-                              isConnecting
-                                  ? "NÉGOCIATION..."
-                                  : isConnected
-                                      ? "CONNECTÉ"
-                                      : (srv != null ? "ACTIVER" : "AUCUN ACCÈS"),
-                              style: TextStyle(
-                                color: isConnected ? Colors.white : (srv != null ? _textPrimary : _text54),
-                                fontSize: 11,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 1.5,
-                              ),
-                            ),
-                            if (isConnected) ...[
-                              const SizedBox(height: 3),
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
+                              child: Stack(
                                 children: [
-                                  Container(
-                                    width: 6,
-                                    height: 6,
-                                    decoration: const BoxDecoration(
-                                      color: cyberGreen,
-                                      shape: BoxShape.circle,
+                                  // Satellite 1 (Top)
+                                  Positioned(
+                                    top: 0,
+                                    left: (outerSize / 2) - 5,
+                                    child: Container(
+                                      width: 10,
+                                      height: 10,
+                                      decoration: BoxDecoration(
+                                        color: coreColor,
+                                        shape: BoxShape.circle,
+                                        boxShadow: [
+                                          BoxShadow(color: coreColor, blurRadius: 8, spreadRadius: 2),
+                                        ],
+                                      ),
                                     ),
                                   ),
-                                  const SizedBox(width: 4),
-                                  const Text(
-                                    "PROTÉGÉ",
-                                    style: TextStyle(
-                                      color: cyberGreen,
-                                      fontSize: 8,
-                                      fontWeight: FontWeight.bold,
-                                      letterSpacing: 1,
+                                  // Satellite 2 (Bottom right)
+                                  Positioned(
+                                    bottom: outerSize * 0.20,
+                                    right: outerSize * 0.08,
+                                    child: Container(
+                                      width: 7,
+                                      height: 7,
+                                      decoration: BoxDecoration(
+                                        color: coreColor.withOpacity(0.85),
+                                        shape: BoxShape.circle,
+                                        boxShadow: [
+                                          BoxShadow(color: coreColor.withOpacity(0.8), blurRadius: 6),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                  // Satellite 3 (Bottom left)
+                                  Positioned(
+                                    bottom: outerSize * 0.20,
+                                    left: outerSize * 0.08,
+                                    child: Container(
+                                      width: 7,
+                                      height: 7,
+                                      decoration: BoxDecoration(
+                                        color: coreColor.withOpacity(0.85),
+                                        shape: BoxShape.circle,
+                                        boxShadow: [
+                                          BoxShadow(color: coreColor.withOpacity(0.8), blurRadius: 6),
+                                        ],
+                                      ),
                                     ),
                                   ),
                                 ],
                               ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                );
-              },
-            ),
+                            ),
+                          ),
+
+                          // Middle pulsing aura ring
+                          Container(
+                            width: auraSize + (pulseVal * 14),
+                            height: auraSize + (pulseVal * 14),
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Colors.transparent,
+                              border: Border.all(
+                                color: coreColor.withOpacity(0.25 + (pulseVal * 0.3)),
+                                width: 2,
+                              ),
+                              boxShadow: [
+                                if (isConnected || isConnecting)
+                                  BoxShadow(
+                                    color: coreColor.withOpacity(0.25 + (pulseVal * 0.35)),
+                                    blurRadius: 35,
+                                    spreadRadius: 4 + (pulseVal * 6),
+                                  ),
+                              ],
+                            ),
+                          ),
+
+                          // Inner Power Reactor Core
+                          Container(
+                            width: coreSize,
+                            height: coreSize,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              gradient: RadialGradient(
+                                colors: isConnected
+                                    ? [
+                                        Color.lerp(const Color(0xFF065F46), const Color(0xFF047857), pulseVal)!,
+                                        const Color(0xFF022C22),
+                                      ]
+                                    : isConnecting
+                                        ? [
+                                            Color.lerp(const Color(0xFFB45309), const Color(0xFFD97706), pulseVal)!,
+                                            const Color(0xFF451A03),
+                                          ]
+                                        : [
+                                            const Color(0xFF1E293B),
+                                            const Color(0xFF090E17),
+                                          ],
+                                center: Alignment.center,
+                                radius: 0.85,
+                              ),
+                              border: Border.all(
+                                color: coreColor,
+                                width: 3.2,
+                              ),
+                            ),
+                            child: Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  if (isConnecting)
+                                    SizedBox(
+                                      width: coreSize * 0.28,
+                                      height: coreSize * 0.28,
+                                      child: const CircularProgressIndicator(
+                                        strokeWidth: 3.5,
+                                        valueColor: AlwaysStoppedAnimation<Color>(cyberYellow),
+                                      ),
+                                    )
+                                  else
+                                    Icon(
+                                      Icons.power_settings_new_rounded,
+                                      size: coreSize * 0.32,
+                                      color: isConnected ? Colors.white : (srv != null ? cyberCyan : _text38),
+                                    ),
+                                  const SizedBox(height: 6),
+                                  FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                                      child: Text(
+                                        isConnecting
+                                            ? "NÉGOCIATION..."
+                                            : isConnected
+                                                ? "CONNECTÉ"
+                                                : (srv != null ? "ACTIVER" : "AUCUN ACCÈS"),
+                                        style: TextStyle(
+                                          color: isConnected ? Colors.white : (srv != null ? _textPrimary : _text54),
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w900,
+                                          letterSpacing: 1.5,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  if (isConnected) ...[
+                                    const SizedBox(height: 3),
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Container(
+                                          width: 6,
+                                          height: 6,
+                                          decoration: const BoxDecoration(
+                                            color: cyberGreen,
+                                            shape: BoxShape.circle,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 4),
+                                        const Text(
+                                          "PROTÉGÉ",
+                                          style: TextStyle(
+                                            color: cyberGreen,
+                                            fontSize: 8,
+                                            fontWeight: FontWeight.bold,
+                                            letterSpacing: 1,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              );
+            },
           ),
           const SizedBox(height: 16),
 
@@ -4460,94 +4670,149 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
             children: [
               Expanded(
                 child: Container(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                   decoration: BoxDecoration(
                     color: cyberCardBg,
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(color: _text10),
+                    boxShadow: [
+                      BoxShadow(color: cyberCyan.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 2)),
+                    ],
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
                         children: [
-                          Icon(Icons.arrow_downward, color: cyberCyan, size: 14),
-                          SizedBox(width: 4),
-                          Text("DÉBIT DL", style: TextStyle(color: _text54, fontSize: 9, fontWeight: FontWeight.bold)),
+                          const Icon(Icons.arrow_downward, color: cyberCyan, size: 13),
+                          const SizedBox(width: 4),
+                          Text("DÉBIT DL", style: TextStyle(color: _text54, fontSize: 8.5, fontWeight: FontWeight.bold)),
                         ],
                       ),
-                      SizedBox(height: 4),
-                      Text(
-                        isConnected ? "${_currentDownloadSpeed.toStringAsFixed(2)} Mo/s" : "0.00 Mo/s",
-                        style: TextStyle(color: _textPrimary, fontWeight: FontWeight.bold, fontSize: 14),
+                      const SizedBox(height: 4),
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          isConnected ? "${_currentDownloadSpeed.toStringAsFixed(2)} Mo/s" : "0.00 Mo/s",
+                          style: TextStyle(color: _textPrimary, fontWeight: FontWeight.bold, fontSize: 13.5),
+                        ),
                       ),
-                      Text(
-                        "Total: ${_totalDownloadMb.toStringAsFixed(1)} Mo",
-                        style: TextStyle(color: _text38, fontSize: 8),
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          "Total: ${_totalDownloadMb.toStringAsFixed(1)} Mo",
+                          style: TextStyle(color: _text38, fontSize: 8),
+                        ),
                       ),
                     ],
                   ),
                 ),
               ),
-              SizedBox(width: 8),
+              const SizedBox(width: 8),
               Expanded(
                 child: Container(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                   decoration: BoxDecoration(
                     color: cyberCardBg,
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(color: _text10),
+                    boxShadow: [
+                      BoxShadow(color: cyberGreen.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 2)),
+                    ],
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
                         children: [
-                          Icon(Icons.arrow_upward, color: cyberGreen, size: 14),
-                          SizedBox(width: 4),
-                          Text("DÉBIT UL", style: TextStyle(color: _text54, fontSize: 9, fontWeight: FontWeight.bold)),
+                          const Icon(Icons.arrow_upward, color: cyberGreen, size: 13),
+                          const SizedBox(width: 4),
+                          Text("DÉBIT UL", style: TextStyle(color: _text54, fontSize: 8.5, fontWeight: FontWeight.bold)),
                         ],
                       ),
-                      SizedBox(height: 4),
-                      Text(
-                        isConnected ? "${_currentUploadSpeed.toStringAsFixed(2)} Mo/s" : "0.00 Mo/s",
-                        style: TextStyle(color: _textPrimary, fontWeight: FontWeight.bold, fontSize: 14),
+                      const SizedBox(height: 4),
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          isConnected ? "${_currentUploadSpeed.toStringAsFixed(2)} Mo/s" : "0.00 Mo/s",
+                          style: TextStyle(color: _textPrimary, fontWeight: FontWeight.bold, fontSize: 13.5),
+                        ),
                       ),
-                      Text(
-                        "Total: ${_totalUploadMb.toStringAsFixed(1)} Mo",
-                        style: TextStyle(color: _text38, fontSize: 8),
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          "Total: ${_totalUploadMb.toStringAsFixed(1)} Mo",
+                          style: TextStyle(color: _text38, fontSize: 8),
+                        ),
                       ),
                     ],
                   ),
                 ),
               ),
-              SizedBox(width: 8),
+              const SizedBox(width: 8),
               Expanded(
                 child: Container(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                   decoration: BoxDecoration(
                     color: cyberCardBg,
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(color: _text10),
+                    boxShadow: [
+                      BoxShadow(color: cyberYellow.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 2)),
+                    ],
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
                         children: [
-                          Icon(Icons.wifi, color: cyberYellow, size: 14),
-                          SizedBox(width: 4),
-                          Text("PING MS", style: TextStyle(color: _text54, fontSize: 9, fontWeight: FontWeight.bold)),
+                          Icon(
+                            Icons.wifi,
+                            color: _currentPingMs <= 0
+                                ? _text54
+                                : _currentPingMs < 80
+                                    ? cyberGreen
+                                    : _currentPingMs < 160
+                                        ? cyberYellow
+                                        : cyberRed,
+                            size: 13,
+                          ),
+                          const SizedBox(width: 4),
+                          Text("PING MS", style: TextStyle(color: _text54, fontSize: 8.5, fontWeight: FontWeight.bold)),
                         ],
                       ),
-                      SizedBox(height: 4),
-                      Text(
-                        _currentPingMs > 0 ? '$_currentPingMs ms' : '—',
-                        style: TextStyle(color: _textPrimary, fontWeight: FontWeight.bold, fontSize: 14),
+                      const SizedBox(height: 4),
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          _currentPingMs > 0 ? '$_currentPingMs ms' : '—',
+                          style: TextStyle(
+                            color: _currentPingMs <= 0
+                                ? _textPrimary
+                                : _currentPingMs < 80
+                                    ? cyberGreen
+                                    : _currentPingMs < 160
+                                        ? cyberYellow
+                                        : cyberRed,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13.5,
+                          ),
+                        ),
                       ),
-                      Text(
-                        "Serv. Maître",
-                        style: TextStyle(color: _text38, fontSize: 8),
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          _currentPingMs > 0
+                              ? (_currentPingMs < 80 ? "Ultra Fluide" : _currentPingMs < 160 ? "Normal" : "Latence")
+                              : "Serveur Maître",
+                          style: TextStyle(color: _text38, fontSize: 8),
+                        ),
                       ),
                     ],
                   ),
@@ -4555,7 +4820,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
               ),
             ],
           ),
-          SizedBox(height: 12),
+          const SizedBox(height: 12),
 
           Container(
             padding: const EdgeInsets.all(14),
@@ -4672,6 +4937,17 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: cyberGreen.withOpacity(0.4))),
                           enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _text24)),
                           focusedBorder: const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10)), borderSide: BorderSide(color: cyberGreen)),
+                          suffixIcon: IconButton(
+                            tooltip: "Coller depuis le presse-papier",
+                            icon: const Icon(Icons.content_paste, color: cyberGreen, size: 18),
+                            onPressed: () async {
+                              final data = await Clipboard.getData(Clipboard.kTextPlain);
+                              if (data?.text != null && data!.text!.trim().isNotEmpty) {
+                                _tokenInputCtrl.text = data.text!.trim();
+                                _showToast("Token collé avec succès !");
+                              }
+                            },
+                          ),
                         ),
                       ),
                     ),
