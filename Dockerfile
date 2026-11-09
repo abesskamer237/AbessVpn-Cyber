@@ -1,22 +1,6 @@
-FROM node:22-alpine
+FROM alpine:3.22
 
-WORKDIR /app
+LABEL org.opencontainers.image.title="ABESS VPN retired legacy server"
+LABEL org.opencontainers.image.description="The production control plane is maintained in AbessVpn-Server-Panel."
 
-# Copy package definition
-COPY package*.json ./
-
-# Install dependencies
-RUN npm ci --only=production || npm install
-
-# Copy application source code
-COPY . .
-
-# Expose port
-EXPOSE 3000
-
-# Set environment
-ENV NODE_ENV=production
-ENV PORT=3000
-
-# Run server
-CMD ["npx", "tsx", "server.ts"]
+CMD ["/bin/sh", "-c", "echo 'ABESS VPN legacy server retired. Use https://github.com/abesskamer237/AbessVpn-Server-Panel' >&2; exit 1"]
