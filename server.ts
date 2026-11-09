@@ -11,6 +11,6 @@ console.error(
   '[ABESS VPN] This legacy server is retired. Deploy the control plane from ' +
   'https://github.com/abesskamer237/AbessVpn-Server-Panel instead.'
 );
-process.exitCode = 1;
+throw new Error('ABESS VPN legacy server retired. Use AbessVpn-Server-Panel.');
 
 export {};
