@@ -1,20 +1,12 @@
 [Unit]
-Description=AbessVPN Cyber Server Panel & Master Service
+Description=ABESS VPN legacy server (retired)
+Documentation=https://github.com/abesskamer237/AbessVpn-Server-Panel
 After=network.target
 
 [Service]
-Type=simple
-User=root
-WorkingDirectory=/opt/abessvpn-server
-ExecStart=/usr/bin/npx tsx /opt/abessvpn-server/server.ts
-Restart=always
-RestartSec=5
-Environment=NODE_ENV=production
-Environment=PORT=3000
-
-# Security Hardening
-NoNewPrivileges=true
-PrivateTmp=true
+Type=oneshot
+ExecStart=/usr/bin/false
+RemainAfterExit=no
 
 [Install]
 WantedBy=multi-user.target
