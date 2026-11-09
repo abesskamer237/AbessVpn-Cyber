@@ -2770,9 +2770,9 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
     if (transport == 'native' && protocol != 'shadowsocks' && protocol != 'wireguard' && protocol != 'geny') {
       throw UnsupportedError('Le mode TCP + UDP natif est disponible uniquement avec Shadowsocks ou WireGuard.');
     }
-    final effectiveTransport = transport == 'tcp' ? 'raw' : (transport == 'mkcp' ? 'kcp' : transport);
+    final effectiveTransport = transport == 'mkcp' ? 'kcp' : transport;
     if ((effectiveTransport == 'raw' || effectiveTransport == 'kcp') && protocol != 'vmess' && srv.token != 'RAW-LINK-IMPORT') {
-      throw UnsupportedError('RAW/TCP et mKCP/UDP sont réservés à VMess sur le serveur ABESS.');
+      throw UnsupportedError('RAW et mKCP/UDP sont réservés à VMess sur le serveur ABESS.');
     }
     if (protocol == 'trojan' && !srv.tls) {
       throw UnsupportedError('Trojan sur un serveur public nécessite TLS.');
@@ -2901,6 +2901,12 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
               'host': srv.wsHost.isNotEmpty ? srv.wsHost : srv.address,
               'mode': 'auto'
             }
+          };
+          break;
+        case 'tcp':
+          transportSettings = {
+            'network': 'tcp',
+            'tcpSettings': {'header': {'type': 'none'}}
           };
           break;
         case 'raw':
