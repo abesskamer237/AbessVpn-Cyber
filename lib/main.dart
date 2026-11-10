@@ -1331,6 +1331,16 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
     await prefs.setBool('abess_disconnect_alert', enabled);
   }
 
+  Future<void> _setAutoReconnectEnabled(bool enabled) async {
+    if (mounted) {
+      setState(() => isAutoReconnectEnabled = enabled);
+    }
+    if (!enabled) _reconnectTimer?.cancel();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('abess_auto_reconnect', enabled);
+  }
+
+
   Future<void> _persistProfileState() async {
     final prefs = await SharedPreferences.getInstance();
     final encodedProfiles = jsonEncode(savedServers.map(_serverToJsonMap).toList());
@@ -5313,7 +5323,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   value: isAutoReconnectEnabled,
-                  onChanged: (val) => setState(() => isAutoReconnectEnabled = val),
+                  onChanged: _setAutoReconnectEnabled,
                   activeTrackColor: cyberYellow,
                   title: Text("Reconnexion Automatique", style: TextStyle(color: _textPrimary, fontSize: 12, fontWeight: FontWeight.bold)),
                   subtitle: Text("Tente de reconnecter le VPN automatiquement en cas de perte de réseau.", style: TextStyle(color: _text54, fontSize: 10)),
