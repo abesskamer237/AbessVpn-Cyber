@@ -20,3 +20,14 @@ Tester Android 6/API 23, une version récente et un appareil physique avec écon
 Après deux minutes sans vérification serveur d’une licence gérée, l’application coupe cette connexion. Seul Android peut imposer le blocage global hors VPN : ce délai applicatif ne remplace pas son verrouillage système.
 
 Après migration d’une ancienne licence VLESS/TCP vers TLS dans le panneau, réimporter la licence. Ne pas distribuer de profil TCP simple comme tunnel chiffré.
+
+## SSH ABESS
+
+- Installer l’APK 2.5.0+, importer les exports TCP et WSS du panel.
+- Vérifier sur une autre application le changement d’IP et une navigation HTTPS réelle.
+- Confirmer le DNS dans le tunnel, l’absence de sortie UDP directe, IPv4 et IPv6.
+- Vérifier le refus d’un certificat TLS invalide ou d’une mauvaise empreinte SSH.
+- Suspendre le compte dans le panel et confirmer l’arrêt du VPN. Épuiser le quota, expirer le compte et essayer de reconnecter.
+- Vérifier la limite de connexions simultanées avec deux téléphones.
+- Tester passage Wi-Fi/mobile, écran éteint, batterie, arrêt/reprise de l’APK et VPN permanent avec blocage sans VPN.
+- Confirmer qu’aucun mot de passe, fichier JSON ou URI réutilisable n’apparaît dans les logs/diagnostics.

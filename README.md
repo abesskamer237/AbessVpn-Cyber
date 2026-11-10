@@ -138,3 +138,9 @@ Les deux workflows utilisent le versionCode du pubspec, désormais 2004000, au l
 ## Règlement manuel
 
 Aucun prestataire ni paiement automatique n’est intégré. Les instructions affichent les coordonnées fournies : MTN MoMo **681328753 — manga Ghislain** et Orange Money **695140419 — mengue belinga**. L’utilisateur vérifie le bénéficiaire et effectue lui-même le transfert ; le support/revendeur confirme ensuite la réception et fournit ou renouvelle la licence. Aucune référence déclarée dans l’application ne déclenche de crédit automatique.
+
+## Connexion SSH ABESS (2.5.0+)
+
+Importer le JSON exporté par **Comptes SSH** du panel, via le sélecteur de fichier `.json` ou le champ d’import, puis sélectionner le profil et connecter. Le client prend en charge SSH TCP et WebSocket avec TLS (443/2084), vérifie l’empreinte SHA-256 et stocke les identifiants avec les profils chiffrés. Le trafic TCP et le DNS passent dans SSH ; les autres flux UDP sont bloqués. Les sockets réseau de l’application elle-même sont exclus du VPN en mode SSH pour éviter une boucle ; les autres applications utilisent le tunnel.
+
+`ABESS_SSH_TEST_NODE_DIR=/chemin/vers/node-dependencies dart run scripts/test_ssh_runtime.dart` teste le vrai client SSH Dart et son proxy SOCKS avec un pair local SSH2 et un certificat TLS de test explicitement approuvé. Les erreurs de certificat et de clé SSH sont testées sans désactiver les vérifications. Ce test est exécuté avant les builds et publications Android. Les essais Android sur téléphone restent nécessaires (veille, réseau mobile, DNS et IPv6).

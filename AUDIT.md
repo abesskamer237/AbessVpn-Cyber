@@ -53,3 +53,9 @@ La syntaxe des sources Dart modifiées et des nouveaux tests est validée par un
 ### Consigne finale : règlement manuel uniquement
 
 La page Outils affiche les numéros MTN MoMo 681328753 (manga Ghislain) et Orange Money 695140419 (mengue belinga), avec copie explicite et contact du support. Aucun SDK, lien de prélèvement ou paiement automatique n’est intégré. Le test de widget correspondant est ajouté ; il reste à exécuter avec Flutter lorsque le SDK sera accessible.
+
+## SSH ABESS — application 2.5.0
+
+Client DartSSH2 indépendant, import du JSON du panel, SSH TCP et WebSocket/TLS, vérification de la clé SHA-256 et du certificat TLS, profils conservés dans le stockage sécurisé. Proxy SOCKS local authentifié vers le moteur Xray Android ; DNS UDP converti en TCP dans SSH, autre UDP bloqué et aucune sortie directe. Les sockets de l’application sont exclus du VPN pour éviter une boucle.
+
+Preuves locales : client Dart compilé et exécuté contre un pair SSH2 réel en TCP et WSS ; refus de certificat non approuvé et d’empreinte erronée ; trafic HTTP réel ; Xray officiel 26.7.28 relié au proxy Dart, HTTP traversant la chaîne complète et DNS UDP converti en TCP via SSH. Analyse Dart des sources modifiées : aucune erreur. Ces contrôles sont intégrés aux workflows avant construction/publication. La recette Android sur téléphone reste à faire ; aucune validation d’autonomie ou de changement de réseau n’est prétendue exécutée.

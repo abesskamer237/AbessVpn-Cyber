@@ -10,6 +10,7 @@ import 'widgets/connection_overview.dart';
 import 'widgets/safety_center.dart';
 import 'widgets/manual_payment_info.dart';
 import 'security/privacy.dart';
+import 'ssh/ssh_runtime.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -65,6 +66,7 @@ class ImportedVpnServer {
   final int deviceLimit;
   final String? allowedDeviceId;
   final String? licenseId;
+  final String? sshUsername, sshPassword, sshFingerprint;
 
   ImportedVpnServer({
     String? id,
@@ -87,6 +89,7 @@ class ImportedVpnServer {
     this.deviceLimit = 1,
     this.allowedDeviceId,
     this.licenseId,
+    this.sshUsername, this.sshPassword, this.sshFingerprint,
   }) : id = id ?? '${DateTime.now().microsecondsSinceEpoch}-${math.Random().nextInt(0x7fffffff)}';
 
   bool get isExpired => DateTime.now().isAfter(expiresAt);
@@ -321,7 +324,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ['abess'],
+        allowedExtensions: ['abess', 'json'],
         withData: true,
       );
       if (result == null || result.files.isEmpty) return;
@@ -332,6 +335,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
               ? await File(picked.path!).readAsString()
               : '';
       final link = content.trim();
+      if (link.startsWith('{')) { await _parseUniversalRawLink(link); return; }
       if (link.isEmpty || !link.startsWith('abess://')) {
         _showToast('Fichier ABESS invalide');
         return;
@@ -344,7 +348,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
     }
   }
 
-  void _parseUniversalRawLink(String raw) {
+  Future<void> _parseUniversalRawLink(String raw) async {
     final link = raw.trim();
     if (link.isEmpty) return;
 
@@ -413,6 +417,19 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
       if (link.startsWith('{') || link.contains('"sshConfig"') || link.contains('"configs"')) {
         try {
           final decoded = jsonDecode(link);
+          if (decoded is Map && decoded['format'] == 'abess-ssh-v1') {
+            final profile = AbessSshProfile.fromJson(Map<String, dynamic>.from(decoded));
+            final server = ImportedVpnServer(name: 'SSH · ${profile.username}', address: profile.host,
+              port: profile.port, path: '/ws-ssh', sni: profile.host, uuid: '', protocol: 'ssh',
+              transport: profile.transport == 'tcp' ? 'tcp' : 'ws', tls: profile.transport != 'tcp',
+              sshUsername: profile.username, sshPassword: profile.password, sshFingerprint: profile.fingerprint,
+              bandwidthGb: profile.quotaGb, bandwidthUsedGb: profile.usedGb, expiresAt: profile.expiresAt,
+              token: 'RAW-LINK-IMPORT');
+            await _storeAndSelectServer(server);
+            _showToast('Compte SSH ABESS importé. TCP pris en charge ; UDP hors DNS indisponible.');
+            return;
+          }
+
           if (decoded is Map && decoded['configs'] is List && (decoded['configs'] as List).isNotEmpty) {
             final firstCfg = decoded['configs'][0];
             final type = (firstCfg['type'] ?? '').toString().toUpperCase();
@@ -1189,6 +1206,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
 
   @override
   void dispose() {
+    unawaited(_sshRuntime?.close() ?? Future<void>.value());
     _pulseController.dispose();
     _rotateController.dispose();
     _telemetryTimer?.cancel();
@@ -1231,6 +1249,10 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
       v2ray = FlutterV2ray(
         onStatusChanged: (status) {
           if (!mounted) return;
+          if (status.state == 'CONNECTED' && currentServer?.protocol == 'ssh' && _sshRuntime == null) {
+            unawaited(v2ray.stopV2Ray());
+            return;
+          }
           setState(() {
             final wasConnected = isConnected;
             vpnStatus = status.state;
@@ -1245,7 +1267,8 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
             _totalUploadMb = _currentUploadBytes / (1024 * 1024);
 
             if (currentServer != null && currentServer!.token != null) {
-              final sessionUsageGb = (_currentDownloadBytes + _currentUploadBytes) / (1024 * 1024 * 1024);
+              final divisor = currentServer!.protocol == 'ssh' ? 1e9 : (1024 * 1024 * 1024);
+              final sessionUsageGb = (_currentDownloadBytes + _currentUploadBytes) / divisor;
               currentServer!.bandwidthUsedGb = math.max(
                 currentServer!.bandwidthUsedGb,
                 _quotaUsageAtSessionStartGb + sessionUsageGb,
@@ -1259,6 +1282,8 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
               disconnectAlert = false;
               if (!wasConnected) _startTelemetry();
             } else if (status.state == 'DISCONNECTED') {
+              final ssh = _sshRuntime; _sshRuntime = null;
+              if (ssh != null) unawaited(ssh.close());
               isConnected = false;
               isConnecting = false;
               _stopTelemetry();
@@ -1309,6 +1334,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
     'deviceLimit': server.deviceLimit,
     'allowedDeviceId': server.allowedDeviceId,
     'licenseId': server.licenseId,
+    'sshUsername': server.sshUsername, 'sshPassword': server.sshPassword, 'sshFingerprint': server.sshFingerprint,
     'protocol': server.protocol,
     'transport': server.transport,
     'tls': server.tls,
@@ -1318,6 +1344,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
 
   ImportedVpnServer _serverFromJsonMap(Map<String, dynamic> map) => ImportedVpnServer(
     id: map['id']?.toString(),
+    sshUsername: map['sshUsername']?.toString(), sshPassword: map['sshPassword']?.toString(), sshFingerprint: map['sshFingerprint']?.toString(),
     name: map['name']?.toString() ?? 'ABESS VPN importé',
     address: map['address']?.toString() ?? '',
     port: (map['port'] as num?)?.toInt() ?? 443,
@@ -1414,7 +1441,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
     void appendProfile(dynamic item) {
       if (item is! Map) return;
       final server = _serverFromJsonMap(Map<String, dynamic>.from(item));
-      if (server.address.isNotEmpty && server.uuid.isNotEmpty) loaded.add(server);
+      if (server.address.isNotEmpty && (server.uuid.isNotEmpty || (server.protocol == 'ssh' && server.sshUsername != null && server.sshPassword != null && server.sshFingerprint != null))) loaded.add(server);
     }
 
     String? secureStoredList;
@@ -1766,6 +1793,16 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
   }
 
   void _copySshJsonConfig(ImportedVpnServer profile) async {
+    if (profile.sshFingerprint != null) {
+      final value = {'format': 'abess-ssh-v1', 'protocol': 'ssh', 'host': profile.address, 'port': profile.port,
+        'username': profile.sshUsername, 'password': profile.sshPassword, 'fingerprint': profile.sshFingerprint,
+        'transport': profile.tls ? (profile.port == 2084 ? 'wss-alt' : 'wss') : 'tcp',
+        'tls': profile.tls, 'sni': profile.tls ? profile.sni : null, 'path': profile.tls ? '/ws-ssh' : null,
+        'quotaGb': profile.bandwidthGb, 'usedGb': profile.bandwidthUsedGb, 'expiresAt': profile.expiresAt.toIso8601String()};
+      await Clipboard.setData(ClipboardData(text: jsonEncode(value)));
+      _showToast('Configuration SSH copiée : elle contient un mot de passe.');
+      return;
+    }
     final userPass = profile.uuid.split(':');
     final user = userPass.isNotEmpty ? userPass[0] : 'dany';
     final pass = userPass.length > 1 ? userPass.sublist(1).join(':') : '#12345';
@@ -2766,7 +2803,10 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
     }
   }
 
+  AbessSshRuntime? _sshRuntime;
+
   Future<void> _connectVpn() async {
+    if (isConnecting) return;
     if (_isMandatoryUpdateBlocked) {
       _userWantedConnection = false;
       _showToast('Mise à jour obligatoire requise avant toute connexion.');
@@ -2795,12 +2835,6 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
       return;
     }
 
-    if (currentServer!.protocol.toLowerCase() == 'ssh') {
-      if (mounted) setState(() => isConnecting = false);
-      _userWantedConnection = false;
-      _showSshConfigDialog(currentServer!);
-      return;
-    }
 
     if (currentServer!.protocol.toLowerCase() == 'vless' && !currentServer!.tls) {
       _userWantedConnection = false;
@@ -2837,11 +2871,37 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
           return;
         }
 
-        final v2rayConfig = _buildXrayClientConfig(currentServer!);
+        final isSsh = currentServer!.protocol.toLowerCase() == 'ssh';
+        await _sshRuntime?.close(); _sshRuntime = null;
+        final Map<String, dynamic> v2rayConfig;
+        String? appPackage;
+        if (isSsh) {
+          final srv = currentServer!;
+          if (srv.sshUsername == null || srv.sshPassword == null || srv.sshFingerprint == null) {
+            throw const FormatException('Réimportez un export SSH ABESS avec empreinte serveur depuis le panel.');
+          }
+          final runtime = AbessSshRuntime(); _sshRuntime = runtime;
+          await runtime.start(AbessSshProfile(host: srv.address, port: srv.port, username: srv.sshUsername!,
+            password: srv.sshPassword!, fingerprint: srv.sshFingerprint!, transport: srv.tls ? 'wss' : 'tcp',
+            expiresAt: srv.expiresAt), onDisconnected: () {
+              if (_sshRuntime != runtime) return;
+              _userWantedConnection = false;
+              unawaited(_disconnectVpn());
+              _showToast('Tunnel SSH interrompu ou compte expiré, suspendu ou quota épuisé.');
+          });
+          if (currentServer?.id != srv.id || _sshRuntime != runtime) {
+            await runtime.close(); throw const SocketException('Configuration modifiée pendant la connexion SSH.');
+          }
+          appPackage = (await PackageInfo.fromPlatform()).packageName;
+          v2rayConfig = runtime.xrayConfig(dnsAddress: _isAntiAdDnsEnabled ? '94.140.14.14' : '1.1.1.1');
+          _addLog('SSH authentifié ; clé serveur vérifiée. TCP et DNS via SSH, autres flux UDP bloqués.');
+        } else {
+          v2rayConfig = _buildXrayClientConfig(currentServer!);
+        }
         await v2ray.startV2Ray(
           remark: 'AbessVpn - ${currentServer!.name}',
           config: jsonEncode(v2rayConfig),
-          blockedApps: const [],
+          blockedApps: appPackage == null ? const [] : [appPackage],
           bypassSubnets: const [],
           proxyOnly: false,
         );
@@ -2862,6 +2922,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
     } catch (e) {
       _userWantedConnection = false;
       _reconnectTimer?.cancel();
+      await _sshRuntime?.close(); _sshRuntime = null;
       _addLog('ÉCHEC DE CONNEXION : $e');
       if (mounted) {
         setState(() {
@@ -2876,6 +2937,8 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
   }
 
   Future<void> _disconnectVpn() async {
+    final ssh = _sshRuntime; _sshRuntime = null;
+    await ssh?.close();
     _addLog('FERMETURE DU TUNNEL...');
     try {
       if (isV2rayInitialized) {
@@ -3417,6 +3480,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
   Future<void> _importServerByEncryptedLink(String link) async {
     _addLog('VALIDATION DU LIEN CHIFFRÉ SUR LE SERVEUR...');
     final clean = link.trim();
+    if (clean.startsWith('{')) { await _parseUniversalRawLink(clean); return; }
     if (clean.isEmpty) return;
     if (!clean.startsWith('abess://')) {
       _showToast('Lien ABESS invalide');
@@ -3738,14 +3802,14 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
             SizedBox(height: 18),
             Divider(color: _text12),
             SizedBox(height: 10),
-            Text('ABESS:// / .ABESS', style: TextStyle(color: cyberCyan, fontSize: 11, fontWeight: FontWeight.bold)),
+            Text('ABESS:// / .ABESS / SSH JSON', style: TextStyle(color: cyberCyan, fontSize: 11, fontWeight: FontWeight.bold)),
             SizedBox(height: 6),
             TextField(
               controller: _fileInputCtrl,
               maxLines: 2,
               style: TextStyle(color: cyberCyan, fontSize: 11, fontFamily: 'monospace'),
               decoration: InputDecoration(
-                hintText: 'abess://',
+                hintText: 'abess:// ou JSON SSH ABESS',
                 hintStyle: TextStyle(color: _text30),
                 filled: true,
                 fillColor: _fieldFillColor,
@@ -3762,7 +3826,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
                       unawaited(_pickAndImportAbessFile());
                     },
                     icon: Icon(Icons.folder_open, size: 17),
-                    label: Text('.ABESS'),
+                    label: Text('FICHIER'),
                   ),
                 ),
                 SizedBox(width: 8),
@@ -4262,7 +4326,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
                       const SizedBox(width: 8),
                       const Expanded(
                         child: Text(
-                          "PROFIL SSH-PAYLOAD (DROPBEAR)",
+                          "TUNNEL SSH ABESS",
                           style: TextStyle(color: cyberYellow, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.8),
                         ),
                       ),
@@ -4277,12 +4341,12 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    "Serveur: ${srv.address}:${srv.port}  •  Utilisateur: ${srv.uuid.split(':').first}",
+                    "Serveur: ${srv.address}:${srv.port}  •  Utilisateur: ${srv.sshUsername ?? srv.uuid.split(':').first}",
                     style: TextStyle(color: _textPrimary, fontSize: 10, fontFamily: "monospace"),
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    "Payload: ${srv.method.replaceAll('\r', '').replaceAll('\n', ' ')}",
+                    "TCP et DNS via SSH · autres flux UDP bloqués",
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(color: _text60, fontSize: 9, fontFamily: "monospace"),
@@ -4293,7 +4357,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
                     child: ElevatedButton.icon(
                       onPressed: () => _copySshJsonConfig(srv),
                       icon: const Icon(Icons.code, size: 14),
-                      label: const Text("COPIER CONFIG JSON (PEDDYGIST / SSH)", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                      label: const Text("COPIER LA CONFIGURATION SSH ABESS", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: cyberYellow,
                         foregroundColor: Colors.black,
@@ -5036,7 +5100,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
                   ],
                 ),
                 const SizedBox(height: 6),
-                Text("Importez un fichier de configuration .abess ou un lien de profil reçu de votre administrateur.", style: TextStyle(color: _text60, fontSize: 10)),
+                Text("Importez un fichier .abess, un JSON SSH ABESS ou un lien reçu de votre administrateur.", style: TextStyle(color: _text60, fontSize: 10)),
                 const SizedBox(height: 12),
                 Row(
                   children: [
@@ -5044,7 +5108,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
                       child: ElevatedButton.icon(
                         onPressed: _pickAndImportAbessFile,
                         icon: const Icon(Icons.file_open, size: 16),
-                        label: const Text("FICHIER .ABESS", style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                        label: const Text("FICHIER .ABESS / JSON", style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: cyberCyan,
                           foregroundColor: Colors.black,

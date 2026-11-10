@@ -137,10 +137,12 @@ jobs:
             keytool -list -keystore "$KEYSTORE_PATH" \
               -storepass "$ANDROID_STORE_PASSWORD" \
               -alias "$ANDROID_KEY_ALIAS" >/dev/null
-            echo "ANDROID_KEYSTORE_PATH=$KEYSTORE_PATH" >> "$GITHUB_ENV"
-            echo "ANDROID_STORE_PASSWORD=$ANDROID_STORE_PASSWORD" >> "$GITHUB_ENV"
-            echo "ANDROID_KEY_ALIAS=$ANDROID_KEY_ALIAS" >> "$GITHUB_ENV"
-            echo "ANDROID_KEY_PASSWORD=$ANDROID_KEY_PASSWORD" >> "$GITHUB_ENV"
+            {
+              echo "ANDROID_KEYSTORE_PATH=$KEYSTORE_PATH"
+              echo "ANDROID_STORE_PASSWORD=$ANDROID_STORE_PASSWORD"
+              echo "ANDROID_KEY_ALIAS=$ANDROID_KEY_ALIAS"
+              echo "ANDROID_KEY_PASSWORD=$ANDROID_KEY_PASSWORD"
+            } >> "$GITHUB_ENV"
             echo "Persistent release keystore is present and the configured alias was found."
           else
             echo "ANDROID_KEYSTORE_BASE64 is required for official releases; configure the persistent signing secrets." >&2
@@ -157,6 +159,20 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y librsvg2-bin
           rsvg-convert -w 1024 -h 1024 assets/abess_vpn_logo.svg -o assets/abess_vpn_logo.png
+
+      - name: Verify SSH TCP and WSS with the real Dart client
+        if: steps.guard.outputs.publish == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh_test_node_dir="$RUNNER_TEMP/abess-ssh-client-test"
+          npm install --prefix "$ssh_test_node_dir" --ignore-scripts --no-audit --no-fund ssh2@1.17.0 ws@8.22.0
+          ssh_test_xray_container="abess-ssh-client-test-xray"
+          trap 'docker rm -f "$ssh_test_xray_container" >/dev/null 2>&1 || true' EXIT
+          docker create --name "$ssh_test_xray_container" ghcr.io/xtls/xray-core:26.7.28 >/dev/null
+          docker cp "$ssh_test_xray_container:/usr/local/bin/xray" "$RUNNER_TEMP/abess-ssh-test-xray"
+          chmod 700 "$RUNNER_TEMP/abess-ssh-test-xray"
+          ABESS_SSH_TEST_NODE_DIR="$ssh_test_node_dir" SSH_TEST_XRAY_BIN="$RUNNER_TEMP/abess-ssh-test-xray" dart run scripts/test_ssh_runtime.dart
 
       - name: Run Flutter tests
         if: steps.guard.outputs.publish == 'true'

@@ -1,7 +1,7 @@
 name: abess_vpn
 description: AbessVPN Commercial Edition - Cyber Xray VLESS Client with Token Protection, SNI Host Injection and Anti-Tamper Security
 publish_to: 'none'
-version: 2.4.0+2004000
+version: 2.5.0+2005000
 
 environment:
   sdk: '>=3.11.0 <4.0.0'
@@ -10,6 +10,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  dartssh2: ^4.1.0
   flutter_v2ray: ^1.0.10
   google_fonts: ^6.1.0
   shared_preferences: ^2.2.2
