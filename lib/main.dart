@@ -1371,39 +1371,59 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
     }
 
     final loaded = <ImportedVpnServer>[];
+    void appendProfile(dynamic item) {
+      if (item is! Map) return;
+      final server = _serverFromJsonMap(Map<String, dynamic>.from(item));
+      if (server.address.isNotEmpty && server.uuid.isNotEmpty) loaded.add(server);
+    }
+
     String? secureStoredList;
     try {
       secureStoredList = await _secureStorage.read(key: _savedProfilesKey);
     } catch (error) {
       _addLog('LECTURE DU STOCKAGE SÉCURISÉ IMPOSSIBLE : $error');
     }
-    // Migrate older plaintext profiles once; _persistProfileState writes them
-    // to secure storage before deleting the old SharedPreferences entries.
-    final storedList = secureStoredList ?? prefs.getString(_savedProfilesKey);
-    try {
-      if (storedList != null) {
-        final decoded = jsonDecode(storedList);
-        if (decoded is List) {
+
+    var loadedFromSecureStorage = false;
+    if (secureStoredList != null) {
+      try {
+        final decoded = jsonDecode(secureStoredList);
+        if (decoded is! List) throw const FormatException('La liste sécurisée des profils est invalide.');
+        for (final item in decoded) {
+          appendProfile(item);
+        }
+        loadedFromSecureStorage = true;
+      } catch (error) {
+        loaded.clear();
+        _addLog('PROFILS SÉCURISÉS ILLISIBLES : $error. Tentative de récupération des anciennes données.');
+      }
+    }
+
+    if (!loadedFromSecureStorage) {
+      final sharedProfiles = prefs.getString(_savedProfilesKey);
+      if (sharedProfiles != null) {
+        try {
+          final decoded = jsonDecode(sharedProfiles);
+          if (decoded is! List) throw const FormatException('La liste historique des profils est invalide.');
           for (final item in decoded) {
-            if (item is Map) {
-              final server = _serverFromJsonMap(Map<String, dynamic>.from(item));
-              if (server.address.isNotEmpty && server.uuid.isNotEmpty) loaded.add(server);
-            }
+            appendProfile(item);
           }
+        } catch (error) {
+          loaded.clear();
+          _addLog('ANCIENNE LISTE DE PROFILS ILLISIBLE : $error');
         }
       } else {
-        // One-time migration from the previous single-profile storage key.
+        // One-time migration from the previous single-profile plaintext key.
         final legacy = prefs.getString('abess_imported_server');
         if (legacy != null) {
-          final decoded = jsonDecode(legacy);
-          if (decoded is Map) {
-            final server = _serverFromJsonMap(Map<String, dynamic>.from(decoded));
-            if (server.address.isNotEmpty && server.uuid.isNotEmpty) loaded.add(server);
+          try {
+            final decoded = jsonDecode(legacy);
+            if (decoded is Map) appendProfile(decoded);
+          } catch (error) {
+            _addLog('ANCIEN PROFIL ILLISIBLE : $error');
           }
         }
       }
-    } catch (error) {
-      _addLog('PROFILS SAUVEGARDÉS ILLISIBLES : $error');
     }
 
     final wantedId = prefs.getString(_selectedProfileKey);
@@ -1420,13 +1440,17 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
       savedServers = loaded;
       currentServer = selected;
     });
-    if (secureStoredList == null && loaded.isNotEmpty) {
-      await _persistProfileState();
-    } else if (secureStoredList != null) {
-      // A secure copy already exists; discard any stale plaintext duplicates.
+
+    if (loadedFromSecureStorage) {
+      // Only remove plaintext copies after a valid secure copy was parsed.
       await prefs.remove(_savedProfilesKey);
       await prefs.remove('abess_imported_server');
+    } else if (loaded.isNotEmpty) {
+      // Migration is crash-safe: _persistProfileState deletes plaintext copies
+      // only after Android Keystore-backed storage confirms the secure write.
+      await _persistProfileState();
     }
+
     if (selected == null) {
       _addLog('AUCUN SERVEUR ACTIF : IMPORTez un token ou un lien de configuration');
     } else {
