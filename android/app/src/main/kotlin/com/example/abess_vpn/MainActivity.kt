@@ -1,6 +1,7 @@
 package com.example.abess_vpn
 
 import android.content.Intent
+import android.os.Build
 import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -12,6 +13,7 @@ class MainActivity : FlutterActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "abessvpn/system")
             .setMethodCallHandler { call, result ->
                 when (call.method) {
+                    "supportedAbis" -> result.success(Build.SUPPORTED_ABIS.toList())
                     "openVpnSettings" -> {
                         try {
                             startActivity(Intent(Settings.ACTION_VPN_SETTINGS))

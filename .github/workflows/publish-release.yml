@@ -203,15 +203,15 @@ jobs:
           [ "$VERSION_NAME" = "$DECLARED_VERSION" ] || { echo "Release tag must match pubspec.yaml version." >&2; exit 1; }
           [[ "$VERSION_CODE" =~ ^[0-9]+$ ]] || { echo "Invalid versionCode." >&2; exit 1; }
           VPN_DOMAIN="${VPN_DOMAIN:?Set repository variable VPN_DOMAIN to your control-plane hostname}"
-          # 1. Build optimized per-ABI split APKs (arm64-v8a: ~20MB, armeabi-v7a: ~18MB)
-          flutter build apk --release --split-per-abi --no-tree-shake-icons \
+          # 1. Build per-ABI APKs; actual size is checked and reported below.
+          flutter build apk --release --split-per-abi --tree-shake-icons \
             --build-name="$VERSION_NAME" --build-number="$VERSION_CODE" \
             --obfuscate \
             --split-debug-info=build/private-symbols/abess-vpn \
             --dart-define="ABESS_API_BASE_URL=https://$VPN_DOMAIN"
 
           mkdir -p build/dist-apks
-          # Main official APK: arm64-v8a (~20MB, for 98% of modern phones):
+          # Main official APK: ARM64. ARM32 and universal alternatives follow.
           cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk build/dist-apks/"ABESS-VPN-${RELEASE_TAG}.apk"
           # Explicit arm64 naming:
           cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk build/dist-apks/"ABESS-VPN-${RELEASE_TAG}-arm64.apk"
@@ -219,13 +219,17 @@ jobs:
           cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk build/dist-apks/"ABESS-VPN-${RELEASE_TAG}-arm32.apk"
 
           # 2. Build universal APK (contains all ABIs for universal compatibility)
-          flutter build apk --release --no-tree-shake-icons \
+          flutter build apk --release --tree-shake-icons \
             --build-name="$VERSION_NAME" --build-number="$VERSION_CODE" \
             --obfuscate \
             --split-debug-info=build/private-symbols/abess-vpn \
             --dart-define="ABESS_API_BASE_URL=https://$VPN_DOMAIN"
 
           cp build/app/outputs/flutter-apk/app-release.apk build/dist-apks/"ABESS-VPN-${RELEASE_TAG}-universal.apk"
+
+      - name: Verify release APK size and native packaging
+        if: steps.guard.outputs.publish == 'true'
+        run: python3 scripts/check_apk_size.py build/dist-apks/*.apk --report APK-SIZES.json --markdown APK-SIZES.md
 
       - name: Prepare release asset
         if: steps.guard.outputs.publish == 'true'
@@ -263,11 +267,11 @@ jobs:
             if [ "$IS_MAIN_PUSH" = "true" ]; then
               gh release create "$RELEASE_TAG" --target "$GITHUB_SHA" \
                 --title "ABESS VPN $RELEASE_TAG" \
-                --notes "Version Android ABESS VPN optimisée (taille ultra-réduite de 68 Mo à ~20 Mo). Compatible avec tous les smartphones Android."
+                --notes-file APK-SIZES.md
             else
               gh release create "$RELEASE_TAG" \
                 --title "ABESS VPN $RELEASE_TAG" \
-                --notes "Version Android ABESS VPN optimisée (taille ultra-réduite de 68 Mo à ~20 Mo). Compatible avec tous les smartphones Android."
+                --notes-file APK-SIZES.md
             fi
           fi
-          gh release upload "$RELEASE_TAG" ABESS-VPN-*.apk SHA256SUMS --clobber
+          gh release upload "$RELEASE_TAG" ABESS-VPN-*.apk SHA256SUMS APK-SIZES.json APK-SIZES.md --clobber

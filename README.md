@@ -144,3 +144,7 @@ Aucun prestataire ni paiement automatique n’est intégré. Les instructions af
 Importer le JSON exporté par **Comptes SSH** du panel, via le sélecteur de fichier `.json` ou le champ d’import, puis sélectionner le profil et connecter. Le client prend en charge SSH TCP et WebSocket avec TLS (443/2084), vérifie l’empreinte SHA-256 et stocke les identifiants avec les profils chiffrés. Le trafic TCP et le DNS passent dans SSH ; les autres flux UDP sont bloqués. Les sockets réseau de l’application elle-même sont exclus du VPN en mode SSH pour éviter une boucle ; les autres applications utilisent le tunnel.
 
 `ABESS_SSH_TEST_NODE_DIR=/chemin/vers/node-dependencies dart run scripts/test_ssh_runtime.dart` teste le vrai client SSH Dart et son proxy SOCKS avec un pair local SSH2 et un certificat TLS de test explicitement approuvé. Les erreurs de certificat et de clé SSH sont testées sans désactiver les vérifications. Ce test est exécuté avant les builds et publications Android. Les essais Android sur téléphone restent nécessaires (veille, réseau mobile, DNS et IPv6).
+
+## APK allégés (2.5.2+)
+
+Téléchargez la variante ARM64 ou ARM32 adaptée à votre téléphone ; la variante universelle est plus volumineuse. Les bibliothèques natives sont compressées, les données géographiques inutilisées sont exclues et les icônes sont réduites. Les tailles réelles et les budgets vérifiés avant publication figurent dans `APK-SIZES.md` sur la release et dans [le guide de taille](docs/APK_SIZE.md).

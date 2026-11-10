@@ -61,3 +61,7 @@ Client DartSSH2 indépendant, import du JSON du panel, SSH TCP et WebSocket/TLS,
 Preuves locales : client Dart compilé et exécuté contre un pair SSH2 réel en TCP et WSS ; refus de certificat non approuvé et d’empreinte erronée ; trafic HTTP réel ; Xray officiel 26.7.28 relié au proxy Dart, HTTP traversant la chaîne complète et DNS UDP converti en TCP via SSH. Analyse Dart des sources modifiées : aucune erreur. Ces contrôles sont intégrés aux workflows avant construction/publication. La recette Android sur téléphone reste à faire ; aucune validation d’autonomie ou de changement de réseau n’est prétendue exécutée.
 
 La version 2.5.1 distingue les profils SSH par utilisateur, hôte, port et transport afin que l’import d’un deuxième compte sur le même serveur ne remplace pas le premier.
+
+## Réduction de taille 2.5.2
+
+Analyse du fichier ARM64 signé 2.5.1 : 55 768 409 octets, moteurs natifs non compressés et bases géographiques inutilisées. Activation de la compression native standard AGP, exclusion GeoIP/GeoSite après inspection des configurations et du chargement optionnel du plugin, réduction des polices et retrait de deux dépendances non utilisées. Les moteurs et protocoles actuels restent inclus. Sélection de l’APK par ABI dans le repli de mise à jour GitHub. Contrôle des bibliothèques, de la compression et des budgets ajouté avant publication ; chaque release publie ses mesures réelles. La taille installée ne diminue pas dans les mêmes proportions que le téléchargement.

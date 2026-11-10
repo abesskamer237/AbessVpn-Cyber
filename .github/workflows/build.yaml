@@ -159,7 +159,7 @@ jobs:
               exit 1
             fi
             # 1. Build optimized per-ABI split APKs (arm64-v8a: ~20MB, armeabi-v7a: ~18MB)
-            flutter build apk --release --split-per-abi --no-tree-shake-icons \
+            flutter build apk --release --split-per-abi --tree-shake-icons \
               --build-name="$VERSION_NAME" --build-number="$VERSION_CODE" \
               --obfuscate \
               --split-debug-info=build/private-symbols/abess-vpn \
@@ -170,7 +170,7 @@ jobs:
             cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk build/dist-apks/
 
             # 2. Build universal APK
-            flutter build apk --release --no-tree-shake-icons \
+            flutter build apk --release --tree-shake-icons \
               --build-name="$VERSION_NAME" --build-number="$VERSION_CODE" \
               --obfuscate \
               --split-debug-info=build/private-symbols/abess-vpn \
@@ -179,9 +179,16 @@ jobs:
             cp build/dist-apks/* build/app/outputs/flutter-apk/ || true
           fi
 
+      - name: Verify release APK size and native packaging
+        if: github.event_name != 'pull_request'
+        run: python3 scripts/check_apk_size.py build/app/outputs/flutter-apk/*.apk --report build/apk-size-report.json --markdown build/apk-size-report.md
+
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: abess-vpn-${{ github.event_name == 'pull_request' && 'debug-pr' || 'release-signed' }}
-          path: build/app/outputs/flutter-apk/*.apk
+          path: |
+            build/app/outputs/flutter-apk/*.apk
+            build/apk-size-report.json
+            build/apk-size-report.md
           if-no-files-found: error
 

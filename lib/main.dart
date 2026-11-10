@@ -10,6 +10,7 @@ import 'widgets/connection_overview.dart';
 import 'widgets/safety_center.dart';
 import 'widgets/manual_payment_info.dart';
 import 'security/privacy.dart';
+import 'security/apk_selection.dart';
 import 'ssh/ssh_runtime.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
@@ -778,9 +779,14 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
             final assets = (release['assets'] as List<dynamic>? ?? const []);
             final apks = assets.whereType<Map<String, dynamic>>().where((a) =>
               (a['name'] ?? '').toString().toLowerCase().endsWith('.apk')).toList();
-            if (apks.isNotEmpty) {
-              downloadUrl = (apks.first['browser_download_url'] ?? '').toString();
+            List<String> abis = const [];
+            if (Platform.isAndroid) {
+              try {
+                abis = await const MethodChannel('abessvpn/system').invokeListMethod<String>('supportedAbis') ?? const [];
+              } catch (_) { /* Fall back to the compatible universal APK. */ }
             }
+            downloadUrl = selectApkAsset(apks, abis) ?? '';
+
           }
         } catch (_) {}
       }

@@ -39,11 +39,21 @@ android {
         versionCode = flutter.versionCode
         versionName = flutter.versionName
 
-        // Packaging and ABI optimization is managed dynamically by Flutter CLI
-        // via --split-per-abi to yield lightweight ~20MB per-architecture APKs.
+        // CI builds separate ARM32/ARM64 APKs; the universal variant is larger.
+    }
+
+    // Current VLESS/SSH configurations do not use geographic routing lists.
+    // The VPN plugin copies these optional assets only if they are present.
+    androidResources {
+        ignoreAssetsPatterns += listOf("geoip.dat", "geosite.dat")
     }
 
     packaging {
+        jniLibs {
+            // Compress native engines inside the APK. Android extracts them at
+            // installation, preserving the original ELF binaries and JNI APIs.
+            useLegacyPackaging = true
+        }
         resources {
             excludes += listOf(
                 "META-INF/*.version",

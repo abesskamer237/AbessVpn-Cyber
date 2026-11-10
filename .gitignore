@@ -22,3 +22,7 @@ android/key.properties
 android/local.properties
 .env*
 !.env.example
+
+# Python build-report helpers
+__pycache__/
+*.pyc
