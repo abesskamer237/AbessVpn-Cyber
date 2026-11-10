@@ -118,3 +118,9 @@ Pour déployer le serveur, utilise son README et ses workflows GitHub Actions. C
 
 ---
 © 2026 AbessVPN Cyber - Tous droits réservés.
+
+## Interface et environnement de développement
+
+L’application utilise Flutter 3.41.0 (Dart 3.11+) et Android 6.0/API 23 minimum, conformément au verrou de dépendances. L’accueil affiche le serveur sélectionné et l’état réel du VPN. La navigation Material 3 et les transitions respectent la réduction des mouvements du système.
+
+Avant de distribuer un APK : `flutter pub get --enforce-lockfile`, `flutter analyze`, `flutter test`, puis compiler avec `--dart-define=ABESS_API_BASE_URL=https://VOTRE_DOMAINE`. Aucun domaine de production n’est choisi par défaut. Les limites de validation de cet environnement sont consignées dans `AUDIT.md`.

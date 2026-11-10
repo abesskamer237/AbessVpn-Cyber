@@ -36,8 +36,8 @@ android {
         // flutter_secure_storage 10.x requires Android 6.0 (API 23) or newer.
         minSdk = 23
         targetSdk = flutter.targetSdkVersion
-        versionCode = flutter.versionCode()
-        versionName = flutter.versionName()
+        versionCode = flutter.versionCode
+        versionName = flutter.versionName
 
         // Packaging and ABI optimization is managed dynamically by Flutter CLI
         // via --split-per-abi to yield lightweight ~20MB per-architecture APKs.

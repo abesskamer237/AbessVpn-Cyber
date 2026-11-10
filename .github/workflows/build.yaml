@@ -20,7 +20,7 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.22.3"
+          flutter-version: "3.41.0"
           channel: stable
           cache: true
 
@@ -112,11 +112,8 @@ jobs:
           REF_TYPE: ${{ github.ref_type }}
         run: |
           set -euo pipefail
-          VPN_DOMAIN="${VPN_DOMAIN:-panel.pagnol.xyz}"
-          if ! [[ "$VPN_DOMAIN" =~ ^[A-Za-z0-9.:-]+$ ]]; then
-            echo "Invalid VPN_DOMAIN format: $VPN_DOMAIN, falling back to panel.pagnol.xyz" >&2
-            VPN_DOMAIN="panel.pagnol.xyz"
-          fi
+          VPN_DOMAIN="${VPN_DOMAIN:?Set repository variable VPN_DOMAIN to your control-plane hostname}"
+          [[ "$VPN_DOMAIN" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ ]] || { echo "VPN_DOMAIN must be a hostname without scheme, port or path." >&2; exit 1; }
           # Obfuscate Dart symbols in the distributed APK. Keep symbols in the
           # runner workspace for private diagnostics; never publish them as an artifact.
           # Use the version declared by the Flutter project instead of a stale

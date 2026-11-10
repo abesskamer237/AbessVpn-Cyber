@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_v2ray/flutter_v2ray.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'widgets/connection_overview.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -149,6 +149,8 @@ class AbessVpnApp extends StatelessWidget {
         return MaterialApp(
           title: 'AbessVpn',
           debugShowCheckedModeBanner: false,
+          themeAnimationDuration: WidgetsBinding.instance.platformDispatcher.accessibilityFeatures.disableAnimations
+              ? Duration.zero : const Duration(milliseconds: 260),
           theme: ThemeData(
             brightness: brightness,
             scaffoldBackgroundColor: isDarkMode ? const Color(0xFF030712) : const Color(0xFFF1F5F9),
@@ -157,30 +159,33 @@ class AbessVpnApp extends StatelessWidget {
               seedColor: isDarkMode ? const Color(0xFF10B981) : const Color(0xFF047857),
               brightness: brightness,
             ),
-            textTheme: GoogleFonts.rajdhaniTextTheme(baseTheme.textTheme).copyWith(
-              titleLarge: GoogleFonts.orbitron(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 1.2,
-                color: isDarkMode ? Colors.white : const Color(0xFF0F172A),
+            useMaterial3: true,
+            visualDensity: VisualDensity.standard,
+            textTheme: baseTheme.textTheme.copyWith(
+              titleLarge: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, letterSpacing: -.5),
+              titleMedium: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              titleSmall: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+              labelLarge: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+            ),
+            inputDecorationTheme: InputDecorationTheme(
+              filled: true,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+            ),
+            elevatedButtonTheme: ElevatedButtonThemeData(
+              style: ElevatedButton.styleFrom(
+                minimumSize: const Size(44, 48),
+                elevation: 0,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
               ),
-              titleMedium: GoogleFonts.orbitron(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 1.0,
-                color: isDarkMode ? Colors.white : const Color(0xFF0F172A),
-              ),
-              titleSmall: GoogleFonts.orbitron(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 0.8,
-                color: isDarkMode ? Colors.white : const Color(0xFF0F172A),
-              ),
-              labelLarge: GoogleFonts.orbitron(
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 1.0,
-              ),
+            ),
+            navigationBarTheme: NavigationBarThemeData(
+              backgroundColor: isDarkMode ? const Color(0xFF0B1525) : Colors.white,
+              indicatorColor: isDarkMode ? const Color(0xFF153D35) : const Color(0xFFD1FAE5),
+              labelTextStyle: WidgetStateProperty.resolveWith((states) => TextStyle(
+                fontSize: 11,
+                fontWeight: states.contains(WidgetState.selected) ? FontWeight.w700 : FontWeight.w500,
+              )),
             ),
           ),
           home: const MainVpnScreen(),
@@ -657,7 +662,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
   final List<String> _logs = [];
 
   // URLs Serveurs Maîtres AbessVpn
-  static const String _configuredApiBaseUrl = String.fromEnvironment('ABESS_API_BASE_URL', defaultValue: 'https://panel.pagnol.xyz');
+  static const String _configuredApiBaseUrl = String.fromEnvironment('ABESS_API_BASE_URL', defaultValue: '');
 
   // The API control-plane hostname is injected by CI. Never fall back to old
   // hosts or raw IPs: doing so could send licence tokens to a retired server.
@@ -667,13 +672,15 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
       return <String>[];
     }
     final parsed = Uri.tryParse(configured);
-    if (parsed == null || parsed.scheme != 'https' || parsed.host.isEmpty || !parsed.hasAuthority) {
+    if (parsed == null || parsed.scheme != 'https' || parsed.host.isEmpty || !parsed.hasAuthority ||
+        parsed.userInfo.isNotEmpty || parsed.path.isNotEmpty || parsed.hasQuery || parsed.hasFragment) {
       return <String>[];
     }
     return <String>[configured];
   }();
   final List<String> _masterServerUrls = _robustMasterUrls;
 
+  bool _reduceMotion = false;
   late AnimationController _pulseController;
   late AnimationController _rotateController;
   bool _isReactorPressed = false;
@@ -1158,6 +1165,19 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
         _hasUnreadAnnouncements = _activeAnnouncements.any((a) =>
             a.isMandatory || a.showMode == 'EVERY_LAUNCH' || !list.contains(a.id));
       });
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _reduceMotion = MediaQuery.disableAnimationsOf(context);
+    if (_reduceMotion) {
+      _pulseController.stop();
+      _rotateController.stop();
+    } else {
+      if (!_pulseController.isAnimating) _pulseController.repeat(reverse: true);
+      if (!_rotateController.isAnimating) _rotateController.repeat();
     }
   }
 
@@ -4057,7 +4077,14 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
       ),
       body: SafeArea(
         child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 250),
+          duration: _reduceMotion ? Duration.zero : const Duration(milliseconds: 320),
+          transitionBuilder: (child, animation) => FadeTransition(
+            opacity: animation,
+            child: SlideTransition(
+              position: Tween<Offset>(begin: const Offset(0, .025), end: Offset.zero).animate(animation),
+              child: child,
+            ),
+          ),
           switchInCurve: Curves.easeOutCubic,
           switchOutCurve: Curves.easeInCubic,
           child: _buildCurrentTab(srv, usedGb, totalGb, usedPercent, remainingDays),
@@ -4075,32 +4102,19 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
             ),
           ],
         ),
-        child: BottomNavigationBar(
-          currentIndex: _currentNavIndex,
-          onTap: (index) => setState(() => _currentNavIndex = index),
-          backgroundColor: cyberCardBg,
-          selectedItemColor: cyberGreen,
-          unselectedItemColor: _text38,
-          selectedFontSize: 11,
-          unselectedFontSize: 10,
-          type: BottomNavigationBarType.fixed,
+        child: NavigationBar(
+          selectedIndex: _currentNavIndex,
+          onDestinationSelected: (index) {
+            if (index == _currentNavIndex) return;
+            HapticFeedback.selectionClick();
+            setState(() => _currentNavIndex = index);
+          },
+          animationDuration: _reduceMotion ? Duration.zero : const Duration(milliseconds: 320),
           elevation: 0,
-          items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.shield_outlined),
-              activeIcon: Icon(Icons.shield, color: cyberGreen),
-              label: "Connexion",
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.dns_outlined),
-              activeIcon: Icon(Icons.dns, color: cyberCyan),
-              label: "Serveurs & Forfaits",
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.bolt_outlined),
-              activeIcon: Icon(Icons.bolt, color: cyberYellow),
-              label: "Outils & Diagnostic",
-            ),
+          destinations: const [
+            NavigationDestination(icon: Icon(Icons.shield_outlined), selectedIcon: Icon(Icons.shield_rounded), label: 'Connexion'),
+            NavigationDestination(icon: Icon(Icons.dns_outlined), selectedIcon: Icon(Icons.dns_rounded), label: 'Mes accès'),
+            NavigationDestination(icon: Icon(Icons.tune_outlined), selectedIcon: Icon(Icons.tune_rounded), label: 'Outils'),
           ],
         ),
       ),
@@ -4136,118 +4150,13 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       child: Column(
         children: [
-          // Server Status Banner
-          if (srv == null) ...[
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: cyberCardBg,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: cyberCyan.withOpacity(0.4)),
-                boxShadow: [
-                  BoxShadow(color: cyberCyan.withOpacity(0.08), blurRadius: 16, offset: const Offset(0, 4)),
-                ],
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: cyberCyan.withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(Icons.shield_outlined, color: cyberCyan, size: 26),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text("AUCUN SERVEUR SÉLECTIONNÉ", style: TextStyle(color: _textPrimary, fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 0.5)),
-                        const SizedBox(height: 3),
-                        Text("Activez un token ou choisissez un serveur dans la liste.", style: TextStyle(color: _text60, fontSize: 10)),
-                      ],
-                    ),
-                  ),
-                  ElevatedButton(
-                    onPressed: () => setState(() => _currentNavIndex = 1),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: cyberCyan,
-                      foregroundColor: Colors.black,
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      minimumSize: Size.zero,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    ),
-                    child: const Text("CHOISIR", style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900)),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 14),
-          ] else ...[
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: cyberCardBg,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: cyberGreen.withOpacity(0.45)),
-                boxShadow: [
-                  BoxShadow(color: cyberGreen.withOpacity(0.08), blurRadius: 16, offset: const Offset(0, 4)),
-                ],
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: cyberGreen.withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(Icons.dns_rounded, color: cyberGreen, size: 22),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text("NOEUD VPN SÉLECTIONNÉ", style: TextStyle(color: _text54, fontSize: 9, letterSpacing: 1.2, fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 2),
-                        Text(
-                          srv.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(color: _textPrimary, fontWeight: FontWeight.bold, fontSize: 13),
-                        ),
-                        Text(
-                          "${srv.protocol.toUpperCase()} • ${srv.transport.toUpperCase()} • ${srv.tls ? "TLS ACTIF" : "DIRECT"}",
-                          style: TextStyle(color: cyberGreen, fontSize: 10, fontWeight: FontWeight.bold),
-                        ),
-                      ],
-                    ),
-                  ),
-                  ElevatedButton(
-                    onPressed: () => setState(() => _currentNavIndex = 1),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _softSurfaceFill,
-                      foregroundColor: cyberGreen,
-                      elevation: 0,
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        side: const BorderSide(color: cyberGreen, width: 1.2),
-                      ),
-                    ),
-                    child: const Text("CHANGER", style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900)),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 14),
-          ],
-
+          ConnectionOverview(
+            connected: isConnected,
+            connecting: isConnecting,
+            serverName: srv?.name,
+            onChooseServer: () => setState(() => _currentNavIndex = 1),
+          ),
+          const SizedBox(height: 24),
           if (srv != null && (srv.isExpired || srv.isQuotaExceeded || srv.usedPercentage >= 80)) ...[
             Container(
               width: double.infinity,
@@ -4367,14 +4276,30 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
               final double auraSize = outerSize * 0.86;
               final double coreSize = outerSize * 0.74;
 
-              return GestureDetector(
+              return Semantics(
+                button: true,
+                enabled: !isConnecting,
+                label: isConnecting ? 'Connexion en cours' : isConnected ? 'Déconnecter le VPN' : 'Connecter le VPN',
+                onTap: isConnecting ? null : _toggleVpn,
+                child: FocusableActionDetector(
+                  shortcuts: const <ShortcutActivator, Intent>{
+                    SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
+                    SingleActivator(LogicalKeyboardKey.space): ActivateIntent(),
+                  },
+                  actions: <Type, Action<Intent>>{
+                    ActivateIntent: CallbackAction<ActivateIntent>(onInvoke: (_) {
+                      if (!isConnecting) _toggleVpn();
+                      return null;
+                    }),
+                  },
+                  child: GestureDetector(
                 onTapDown: (_) => setState(() => _isReactorPressed = true),
                 onTapUp: (_) => setState(() => _isReactorPressed = false),
                 onTapCancel: () => setState(() => _isReactorPressed = false),
                 onTap: isConnecting ? null : _toggleVpn,
                 child: AnimatedScale(
                   scale: _isReactorPressed ? 0.94 : 1.0,
-                  duration: const Duration(milliseconds: 110),
+                  duration: _reduceMotion ? Duration.zero : const Duration(milliseconds: 110),
                   curve: Curves.easeInOut,
                   child: AnimatedBuilder(
                     animation: Listenable.merge([_pulseController, _rotateController]),
@@ -4582,6 +4507,8 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
                         ],
                       );
                     },
+                  ),
+                ),
                   ),
                 ),
               );
