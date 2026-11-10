@@ -3167,13 +3167,13 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
               token: cleanToken,
               deviceLimit: data['deviceLimit'] ?? 1,
             );
-            final apiTlsHost = Uri.tryParse(_configuredApiBaseUrl)?.host.toLowerCase() ?? '';
             const tlsWebTransports = {'ws', 'grpc', 'httpupgrade', 'xhttp'};
             if (newServer.tls &&
                 tlsWebTransports.contains(newServer.transport.toLowerCase()) &&
-                apiTlsHost.isNotEmpty &&
-                newServer.sni.toLowerCase() != apiTlsHost) {
-              _addLog('ALERTE TLS : SNI ${newServer.sni} différent du domaine HTTPS ${apiTlsHost}. Le certificat peut être refusé et aucun trafic ne passera. Recréez le profil avec le SNI couvert par le certificat.');
+                newServer.sni.trim().isEmpty) {
+              _addLog('ALERTE TLS : le profil VPN ne contient pas de SNI. Vérifiez le nom couvert par le certificat du serveur VPN.');
+            } else if (newServer.tls && tlsWebTransports.contains(newServer.transport.toLowerCase())) {
+              _addLog('TLS : SNI VPN configuré indépendamment du domaine API.');
             }
             if (isSsh) {
               _addLog('PROFIL SSH-PAYLOAD IMPORTÉ : ${newServer.name} (${newServer.address}:${newServer.port})');
