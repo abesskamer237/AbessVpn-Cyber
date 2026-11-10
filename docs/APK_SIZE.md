@@ -14,3 +14,5 @@ Les workflows vérifient la présence des moteurs natifs, la compression des `.s
 La variante universelle regroupe plusieurs architectures et est plus volumineuse. Pour réduire le téléchargement, choisir ARM64 pour `arm64-v8a` et ARM32 pour `armeabi-v7a`. La taille installée baisse moins que celle du fichier APK, car Android doit extraire les moteurs natifs. Les caches et profils de l’application prennent également de la place.
 
 Les bases géographiques ne doivent pas être réintroduites dans la configuration sans réviser leur exclusion : le contrôle de publication signale les références `geoip:` et `geosite:` dans le code. Les tests de connexion SSH/TLS/Xray et Flutter restent obligatoires avant les builds. Une recette sur téléphone reste nécessaire pour vérifier l’installation, le chargement des bibliothèques et le VPN sur Android réel.
+
+La version 2.5.3 supprime également, au démarrage, les copies GeoIP/GeoSite laissées par les anciennes versions dans les répertoires d’assets propres à l’application. Aucun profil, identifiant ni autre fichier utilisateur n’est supprimé.

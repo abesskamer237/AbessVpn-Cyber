@@ -65,3 +65,5 @@ La version 2.5.1 distingue les profils SSH par utilisateur, hôte, port et trans
 ## Réduction de taille 2.5.2
 
 Analyse du fichier ARM64 signé 2.5.1 : 55 768 409 octets, moteurs natifs non compressés et bases géographiques inutilisées. Activation de la compression native standard AGP, exclusion GeoIP/GeoSite après inspection des configurations et du chargement optionnel du plugin, réduction des polices et retrait de deux dépendances non utilisées. Les moteurs et protocoles actuels restent inclus. Sélection de l’APK par ABI dans le repli de mise à jour GitHub. Contrôle des bibliothèques, de la compression et des budgets ajouté avant publication ; chaque release publie ses mesures réelles. La taille installée ne diminue pas dans les mêmes proportions que le téléchargement.
+
+La version 2.5.3 nettoie aussi les deux anciennes copies de bases géographiques lors d’une mise à jour, dans les répertoires d’assets de l’application uniquement. Cela évite de conserver environ 22 Mo de données inutilisées chez les utilisateurs existants. Les profils chiffrés et identifiants sont préservés.

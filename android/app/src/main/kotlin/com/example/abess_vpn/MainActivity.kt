@@ -2,6 +2,7 @@ package com.example.abess_vpn
 
 import android.content.Intent
 import android.os.Build
+import java.io.File
 import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -10,6 +11,20 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        // Older releases copied optional GeoIP/GeoSite data into app-owned
+        // storage. Remove only these obsolete files, never profiles or secrets.
+        runCatching {
+            val assetDirectories = listOfNotNull(
+                getExternalFilesDir("assets"),
+                File(applicationInfo.dataDir, "app_assets")
+            )
+            for (directory in assetDirectories) {
+                for (name in listOf("geoip.dat", "geosite.dat")) {
+                    val obsolete = File(directory, name)
+                    if (obsolete.isFile) obsolete.delete()
+                }
+            }
+        }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "abessvpn/system")
             .setMethodCallHandler { call, result ->
                 when (call.method) {
