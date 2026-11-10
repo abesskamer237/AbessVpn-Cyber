@@ -637,9 +637,9 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
   }
 
   // Amélioration 1 : Kill Switch & Reconnexion Auto
-  bool isKillSwitchEnabled = true;
+  bool isDisconnectAlertEnabled = true;
   bool isAutoReconnectEnabled = true;
-  bool killSwitchAlert = false;
+  bool disconnectAlert = false;
   int _reconnectAttempts = 0;
   bool _userWantedConnection = false;
   Timer? _reconnectTimer;
@@ -1224,16 +1224,16 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
               isConnected = true;
               isConnecting = false;
               _reconnectAttempts = 0;
-              killSwitchAlert = false;
+              disconnectAlert = false;
               if (!wasConnected) _startTelemetry();
             } else if (status.state == 'DISCONNECTED') {
               isConnected = false;
               isConnecting = false;
               _stopTelemetry();
               if (_userWantedConnection) {
-                if (isKillSwitchEnabled) {
-                  killSwitchAlert = true;
-                  _addLog('KILL SWITCH ACTIF : TOUT TRAFIC NON CHIFFRÉ BLOQUÉ');
+                if (isDisconnectAlertEnabled) {
+                  disconnectAlert = true;
+                  _addLog('ALERTE : le tunnel VPN est interrompu. Android peut reprendre le trafic hors VPN. Activez le VPN permanent et le blocage sans VPN dans les paramètres Android pour un verrouillage système.');
                 }
                 if (isAutoReconnectEnabled && _reconnectAttempts < 5) {
                   _reconnectAttempts++;
@@ -1321,6 +1321,14 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
     return 'manual:${server.protocol.toLowerCase()}|${server.transport.toLowerCase()}|${server.address.toLowerCase()}|${server.port}|${server.uuid}|${server.path}|${server.sni}|${server.wsHost}';
   }
 
+  Future<void> _setDisconnectAlertEnabled(bool enabled) async {
+    if (mounted) {
+      setState(() => isDisconnectAlertEnabled = enabled);
+    }
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('abess_disconnect_alert', enabled);
+  }
+
   Future<void> _persistProfileState() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
@@ -1340,10 +1348,16 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
   Future<void> _loadSavedServer() async {
     final prefs = await SharedPreferences.getInstance();
     if (!mounted) return;
+    final disconnectAlertPreference = prefs.getBool('abess_disconnect_alert') ??
+        prefs.getBool('abess_kill_switch') ??
+        true;
     setState(() {
-      isKillSwitchEnabled = prefs.getBool('abess_kill_switch') ?? true;
+      isDisconnectAlertEnabled = disconnectAlertPreference;
       isAutoReconnectEnabled = prefs.getBool('abess_auto_reconnect') ?? true;
     });
+    if (!prefs.containsKey('abess_disconnect_alert')) {
+      await prefs.setBool('abess_disconnect_alert', disconnectAlertPreference);
+    }
 
     final loaded = <ImportedVpnServer>[];
     final storedList = prefs.getString(_savedProfilesKey);
@@ -2626,12 +2640,12 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
     if (isConnected || isConnecting) {
       _userWantedConnection = false;
       _reconnectTimer?.cancel();
-      setState(() => killSwitchAlert = false);
+      setState(() => disconnectAlert = false);
       await _disconnectVpn();
     } else {
       _userWantedConnection = true;
       _reconnectAttempts = 0;
-      setState(() => killSwitchAlert = false);
+      setState(() => disconnectAlert = false);
       await _connectVpn();
     }
   }
@@ -5239,11 +5253,11 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
 
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  value: isKillSwitchEnabled,
-                  onChanged: (val) => setState(() => isKillSwitchEnabled = val),
+                  value: isDisconnectAlertEnabled,
+                  onChanged: _setDisconnectAlertEnabled,
                   activeTrackColor: cyberRed,
-                  title: Text("Kill Switch Anti-Fuite", style: TextStyle(color: _textPrimary, fontSize: 12, fontWeight: FontWeight.bold)),
-                  subtitle: Text("Coupe automatiquement le trafic si le tunnel VPN se déconnecte.", style: TextStyle(color: _text54, fontSize: 10)),
+                  title: Text("Alerte de déconnexion VPN", style: TextStyle(color: _textPrimary, fontSize: 12, fontWeight: FontWeight.bold)),
+                  subtitle: Text("Alerte et journalise la coupure. Ne bloque pas le réseau Android hors tunnel ; activez « VPN permanent » et « Bloquer les connexions sans VPN » dans les paramètres système pour un vrai verrouillage.", style: TextStyle(color: _text54, fontSize: 10)),
                 ),
                 Divider(color: _text12),
 
