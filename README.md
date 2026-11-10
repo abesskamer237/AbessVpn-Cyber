@@ -124,3 +124,17 @@ Pour déployer le serveur, utilise son README et ses workflows GitHub Actions. C
 L’application utilise Flutter 3.41.0 (Dart 3.11+) et Android 6.0/API 23 minimum, conformément au verrou de dépendances. L’accueil affiche le serveur sélectionné et l’état réel du VPN. La navigation Material 3 et les transitions respectent la réduction des mouvements du système.
 
 Avant de distribuer un APK : `flutter pub get --enforce-lockfile`, `flutter analyze`, `flutter test`, puis compiler avec `--dart-define=ABESS_API_BASE_URL=https://VOTRE_DOMAINE`. Aucun domaine de production n’est choisi par défaut. Les limites de validation de cet environnement sont consignées dans `AUDIT.md`.
+
+## Fiabilité et sécurité — version 2.4.0
+
+Les mises à jour sont limitées à l’origine HTTPS du control plane et aux releases GitHub officielles du projet. Un profil VPN importé ne peut plus choisir le serveur de mise à jour. Android reste responsable de la vérification de la signature lors de l’installation. Les releases vérifient les signatures APK, publient SHA256SUMS et produisent une attestation de provenance GitHub.
+
+Les diagnostics partagés à la demande sont expurgés. Les synchronisations de consommation sont sérialisées et ne modifient pas une autre licence si le profil change pendant une requête. Une licence gérée dont la vérification serveur reste indisponible deux minutes est déconnectée.
+
+La page Outils guide vers les paramètres VPN permanent/blocage sans VPN d’Android. Elle ne prétend pas imposer elle-même un kill switch système. Consulter [la matrice de recette sur appareil](docs/DEVICE_TEST_MATRIX.md).
+
+Les deux workflows utilisent le versionCode du pubspec, désormais 2004000, au lieu d’un numéro de run différent selon le workflow. Après publication, renseigner aussi la nouvelle version et son lien officiel dans le panneau de gestion des mises à jour.
+
+## Règlement manuel
+
+Aucun prestataire ni paiement automatique n’est intégré. Les instructions affichent les coordonnées fournies : MTN MoMo **681328753 — manga Ghislain** et Orange Money **695140419 — mengue belinga**. L’utilisateur vérifie le bénéficiaire et effectue lui-même le transfert ; le support/revendeur confirme ensuite la réception et fournit ou renouvelle la licence. Aucune référence déclarée dans l’application ne déclenche de crédit automatique.

@@ -14,3 +14,11 @@ node_modules/
 
 # Data / Local storage
 data/
+
+# Local Android signing material and machine-specific configuration
+*.jks
+*.keystore
+android/key.properties
+android/local.properties
+.env*
+!.env.example

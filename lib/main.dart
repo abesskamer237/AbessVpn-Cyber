@@ -7,6 +7,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_v2ray/flutter_v2ray.dart';
 import 'package:file_picker/file_picker.dart';
 import 'widgets/connection_overview.dart';
+import 'widgets/safety_center.dart';
+import 'widgets/manual_payment_info.dart';
+import 'security/privacy.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -727,10 +730,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
 
       // 1. Priorité au serveur maître /api/v1/app/version
       final endpoints = <String>[..._masterServerUrls];
-      if (currentServer != null && currentServer!.address.isNotEmpty) {
-        final srvHost = 'https://${currentServer!.address}';
-        if (!endpoints.contains(srvHost)) endpoints.add(srvHost);
-      }
+
 
       for (final base in endpoints) {
         try {
@@ -769,7 +769,13 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
       }
 
       if (downloadUrl.isEmpty) {
-        downloadUrl = 'https://t.me/Abess_Vpn';
+        downloadUrl = 'https://github.com/abesskamer237/AbessVpn-Cyber/releases/latest';
+      }
+
+      if (!isTrustedUpdateUrl(downloadUrl, _configuredApiBaseUrl)) {
+        _addLog('MISE À JOUR REFUSÉE : provenance non autorisée.');
+        if (showUpToDate) _showToast('Le lien de mise à jour n’est pas autorisé.');
+        return;
       }
 
       int compare(String a, String b) {
@@ -1210,6 +1216,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
   }
 
   void _addLog(String msg) {
+    msg = redactDiagnostics(msg);
     final time = DateTime.now().toIso8601String().substring(11, 19);
     if (!mounted) return;
     setState(() {
@@ -1929,6 +1936,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
     _telemetryTimer?.cancel();
     _pingTimer?.cancel();
     _connectionDurationSeconds = 0;
+    _lastLicenseVerifiedAt = DateTime.now();
     _quotaUsageAtSessionStartGb = currentServer?.bandwidthUsedGb ?? 0.0;
     _lastReportedDownloadBytes = _currentDownloadBytes;
     _lastReportedUploadBytes = _currentUploadBytes;
@@ -1980,8 +1988,20 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
         token != 'CUSTOM-ZERO-TOKEN' && token != 'RAW-LINK-IMPORT';
   }
 
+  bool _usageSyncInFlight = false;
+  DateTime? _lastLicenseVerifiedAt;
   Future<void> _syncUsageWithServer() async {
-    if (!_isManagedLicense(currentServer)) return;
+    final server = currentServer;
+    if (!_isManagedLicense(server) || _usageSyncInFlight) return;
+    _usageSyncInFlight = true;
+    try {
+      await _performUsageSync(server!);
+    } finally {
+      _usageSyncInFlight = false;
+    }
+  }
+
+  Future<void> _performUsageSync(ImportedVpnServer server) async {
     final downloadDelta = math.max(0, _currentDownloadBytes - _lastReportedDownloadBytes);
     final uploadDelta = math.max(0, _currentUploadBytes - _lastReportedUploadBytes);
 
@@ -1991,7 +2011,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
           Uri.parse('$base/api/v1/client/telemetry'),
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode({
-            'token': currentServer!.token,
+            'token': server.token,
             'bytesDownloaded': downloadDelta,
             'bytesUploaded': uploadDelta,
             'durationSeconds': 10,
@@ -1999,6 +2019,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
           }),
         ).timeout(Duration(seconds: 3));
 
+        if (!mounted || currentServer?.id != server.id) return;
         if (res.statusCode == 401 || res.statusCode == 403) {
           String serverReason = 'Le serveur a refusé cette licence VPN.';
           try {
@@ -2013,6 +2034,9 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
         if (res.statusCode != 200) continue;
 
         final data = jsonDecode(res.body);
+        if (data is! Map || data['ok'] != true || data['status'] is! String ||
+            data['bandwidthUsedGb'] is! num || data['bandwidthGb'] is! num) continue;
+        _lastLicenseVerifiedAt = DateTime.now();
         _lastReportedDownloadBytes = _currentDownloadBytes;
         _lastReportedUploadBytes = _currentUploadBytes;
 
@@ -2028,6 +2052,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
           }
         }
 
+        if (!mounted || currentServer?.id != server.id) return;
         if (data['isQuotaExceeded'] == true || data['status'] == 'quota_exceeded') {
           await _disconnectVpn();
           _showQuotaExceededAlert();
@@ -2047,6 +2072,15 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
         return;
       } catch (_) {}
     }
+    final lastVerified = _lastLicenseVerifiedAt;
+    if (mounted && currentServer?.id == server.id && isConnected &&
+        lastVerified != null && DateTime.now().difference(lastVerified) > const Duration(minutes: 2)) {
+      _userWantedConnection = false;
+      _reconnectTimer?.cancel();
+      await _disconnectVpn();
+      _showToast('Vérification de licence indisponible depuis 2 minutes. Reconnectez-vous après rétablissement du serveur.');
+    }
+
   }
 
   void _stopTelemetry() {
@@ -2632,7 +2666,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
                                   'Token: $tokenResult\n'
                                   'Verdict: $overallVerdict\n'
                                   '------------------------------------';
-                              Clipboard.setData(ClipboardData(text: report));
+                              Clipboard.setData(ClipboardData(text: redactDiagnostics(report)));
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(content: Text('Rapport copié dans le presse-papiers pour le support !')),
                               );
@@ -2699,20 +2733,20 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
   }
 
   Future<bool> _isManagedDataPlaneReady() async {
+    final server = currentServer;
+    if (server == null || _deviceId.isEmpty) return false;
     for (final base in _masterServerUrls) {
       try {
-        final response = await http
-            .get(Uri.parse('$base/api/v1/ping'))
-            .timeout(Duration(seconds: 3));
+        final response = await http.post(
+          Uri.parse('$base/api/v1/client/availability'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'token': server.token, 'deviceId': _deviceId}),
+        ).timeout(const Duration(seconds: 4));
+        if (!mounted || currentServer?.id != server.id) return false;
         if (response.statusCode != 200) continue;
-
         final payload = jsonDecode(response.body);
-        if (payload is Map && payload['dataPlane'] == 'ready') {
-          return true;
-        }
-      } catch (_) {
-        // Try the next configured control-plane endpoint.
-      }
+        if (payload is Map && payload['ok'] == true && payload['dataPlane'] == 'ready') return true;
+      } catch (_) {}
     }
     return false;
   }
@@ -2765,6 +2799,12 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
       if (mounted) setState(() => isConnecting = false);
       _userWantedConnection = false;
       _showSshConfigDialog(currentServer!);
+      return;
+    }
+
+    if (currentServer!.protocol.toLowerCase() == 'vless' && !currentServer!.tls) {
+      _userWantedConnection = false;
+      _showToast('VLESS sans TLS ne chiffre pas le trafic. Importez un profil TLS depuis votre revendeur.');
       return;
     }
 
@@ -3173,7 +3213,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
           ElevatedButton.icon(
             onPressed: () {
               Navigator.pop(ctx);
-              final msg = Uri.encodeComponent("Bonjour, mon token $token a atteint sa limite d\'appareils suite à un changement de téléphone. Mon HWID est: $_deviceId. Pourriez-vous réinitialiser mes appareils ?");
+              final msg = Uri.encodeComponent("Bonjour, ma licence a atteint sa limite d\'appareils suite à un changement de téléphone. Je peux fournir les références de mon achat par un canal sécurisé. Pourriez-vous réinitialiser mes appareils ?");
               _openUrlSafe("https://wa.me/237695140419?text=$msg");
             },
             icon: Icon(Icons.chat, color: Colors.black, size: 14),
@@ -3467,7 +3507,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
     final plan = _createPlanNameCtrl.text.trim().isEmpty ? 'VIP Config' : _createPlanNameCtrl.text.trim();
 
     setModalState(() => _isCreatingToken = true);
-    _addLog('CRÉATION TOKEN ($customCode • ${_createQuotaGb.toInt()} Go • $_createExpiryDays jours)...');
+    _addLog('CRÉATION TOKEN ([code masqué] • ${_createQuotaGb.toInt()} Go • $_createExpiryDays jours)...');
 
     bool success = false;
     for (final base in _masterServerUrls) {
@@ -5124,6 +5164,19 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          ManualPaymentInfo(onContactSupport: () => _openUrlSafe(_whatsappSupportUrl)),
+          const SizedBox(height: 16),
+          SafetyCenter(
+            onOpenSettings: () async {
+              try { await const MethodChannel('abessvpn/system').invokeMethod<void>('openVpnSettings'); }
+              catch (_) { _showToast('Ouvrez les paramètres Android : Réseau et Internet, puis VPN.'); }
+            },
+            onShareDiagnostics: () {
+              final report = redactDiagnostics('ABESS VPN — diagnostic\nÉtat : $vpnStatus\nMoteur initialisé : $isV2rayInitialized\n${_logs.take(20).join('\n')}');
+              Share.share(report, subject: 'Diagnostic ABESS VPN');
+            },
+          ),
+          const SizedBox(height: 16),
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(16),
@@ -5226,7 +5279,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
                   onChanged: (val) => setState(() => _isAntiAdDnsEnabled = val),
                   activeTrackColor: cyberGreen,
                   title: Text("DNS Sécurisé Anti-Pub (AdGuard DoH)", style: TextStyle(color: _textPrimary, fontSize: 12, fontWeight: FontWeight.bold)),
-                  subtitle: Text("Bloque automatiquement les pubs, traceurs et contourne les restrictions DNS FAI.", style: TextStyle(color: _text54, fontSize: 10)),
+                  subtitle: Text("Utilise le résolveur DNS chiffré AdGuard pour le filtrage, selon sa politique.", style: TextStyle(color: _text54, fontSize: 10)),
                 ),
                 Divider(color: _text12),
 
@@ -5236,7 +5289,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
                   onChanged: (val) => setState(() => _isMuxEnabled = val),
                   activeTrackColor: cyberGreen,
                   title: Text("Multiplexage TCP (Mux)", style: TextStyle(color: _textPrimary, fontSize: 12, fontWeight: FontWeight.bold)),
-                  subtitle: Text("Réutilise la même connexion TCP pour charger les pages 2x plus vite.", style: TextStyle(color: _text54, fontSize: 10)),
+                  subtitle: Text("Réutilise des connexions TCP ; le gain dépend du réseau et du transport.", style: TextStyle(color: _text54, fontSize: 10)),
                 ),
                 Divider(color: _text12),
 

@@ -38,3 +38,18 @@ La construction Android exige aussi le SDK Android et Java 17. Les releases exig
 - Tests de widget ajoutés pour l'état déconnecté, le changement d'état, l'action de sélection et les petits écrans avec texte agrandi.
 
 Un parseur Dart indépendant a vérifié la syntaxe des fichiers modifiés sans erreur. Cela ne remplace pas `flutter analyze`, `flutter test` et une compilation Android : ces vérifications restent bloquées localement par l'accès au SDK mentionné ci-dessus. Les workflows GitHub exécutent les tests Flutter avant la construction de l'APK.
+
+## Version 2.4.0 — fiabilité et confidentialité
+
+- Sources de mise à jour limitées à l’origine HTTPS du control plane et aux releases officielles GitHub du projet. Le serveur d’un profil VPN importé ne peut plus annoncer une mise à jour.
+- Expurgation centralisée des journaux et partage explicite d’un rapport de support. Tokens, URI de configuration, UUID, IPv4 et champs de secrets sont masqués.
+- Requêtes de consommation sérialisées, protection contre la réponse d’une ancienne licence après changement de profil et déconnexion après deux minutes sans vérification serveur d’une licence gérée.
+- Vérification de disponibilité du nœud affecté par une route POST, sans token dans l’URL.
+- Refus de VLESS sans TLS dans l’application ; guide VPN permanent/blocage système, ouverture des paramètres Android par canal natif et documentation de recette sur appareil.
+- Version 2.4.0, versionCode 2004000 partagé par les workflows, vérification des signatures APK, manifeste SHA256 et attestation de provenance pour la release. Actions épinglées à leurs commits et Dependabot configuré.
+
+La syntaxe des sources Dart modifiées et des nouveaux tests est validée par un parseur indépendant. Le code TypeScript historique et l’audit npm passent. **Les tests Flutter, la compilation APK, l’installation Android et les tests de fuite/reconnexion ne sont pas exécutés dans ce cloud** : le SDK est toujours bloqué au téléchargement. Les workflows GitHub doivent être suivis après le push ; aucun APK publié n’est annoncé comme validé localement.
+
+### Consigne finale : règlement manuel uniquement
+
+La page Outils affiche les numéros MTN MoMo 681328753 (manga Ghislain) et Orange Money 695140419 (mengue belinga), avec copie explicite et contact du support. Aucun SDK, lien de prélèvement ou paiement automatique n’est intégré. Le test de widget correspondant est ajouté ; il reste à exécuter avec Flutter lorsque le SDK sera accessible.
