@@ -5,6 +5,14 @@ import 'dart:math';
 import 'dart:typed_data';
 import 'package:dartssh2/dartssh2.dart';
 
+String sshProfileIdentity(
+  String host,
+  int port,
+  String username,
+  String transport,
+  bool tls,
+) => 'ssh:${host.toLowerCase()}|$port|$username|$transport|$tls';
+
 class AbessSshProfile {
   final String host, username, password, fingerprint, transport;
   final int port;

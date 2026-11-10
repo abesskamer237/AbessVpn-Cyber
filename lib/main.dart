@@ -1368,6 +1368,9 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
   );
 
   String _profileIdentityKey(ImportedVpnServer server) {
+    if (server.protocol.toLowerCase() == 'ssh' && server.sshUsername != null) {
+      return sshProfileIdentity(server.address, server.port, server.sshUsername!, server.transport, server.tls);
+    }
     final licenseId = server.licenseId?.trim();
     if (licenseId != null && licenseId.isNotEmpty) return 'manual-license:$licenseId';
     final token = server.token?.trim();

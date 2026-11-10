@@ -12,8 +12,8 @@ void main() {
     PackageInfo.setMockInitialValues(
       appName: 'AbessVpn',
       packageName: 'com.abessvpn.app',
-      version: '2.5.0',
-      buildNumber: '2005000',
+      version: '2.5.1',
+      buildNumber: '2005001',
       buildSignature: '',
     );
   });

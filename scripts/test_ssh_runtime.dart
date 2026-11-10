@@ -202,6 +202,11 @@ Future<void> testXray(
 }
 
 Future<void> main() async {
+  check(
+    sshProfileIdentity('vpn.example.test', 443, 'client_a', 'ws', true) !=
+        sshProfileIdentity('vpn.example.test', 443, 'client_b', 'ws', true),
+    'Different SSH accounts on the same server remain separate profiles',
+  );
   final directory = await Directory.systemTemp.createTemp('abess-dart-ssh-');
   final fixture = await Process.start('node', [
     'scripts/ssh_test_fixture.mjs',
