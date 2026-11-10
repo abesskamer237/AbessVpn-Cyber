@@ -559,10 +559,13 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
         final uri = Uri.parse(link.replaceFirst('wireguard://', 'wg://'));
         final q = uri.queryParameters;
         final privKey = Uri.decodeComponent(uri.userInfo);
-        final pubKey = q['publickey'] ?? q['pubkey'] ?? q['server_pubkey'] ?? '+Qu+gVMRhaR0hL3ePZwd+l+L/NQf8jOrf7QZLGJCUCU=';
-        final clientIp = q['address'] ?? q['ip'] ?? '10.231.0.2/32';
-        final host = uri.host.isNotEmpty ? uri.host : '79.76.109.186';
+        final pubKey = q['publickey'] ?? q['pubkey'] ?? q['server_pubkey'] ?? '';
+        final clientIp = q['address'] ?? q['ip'] ?? '';
+        final host = uri.host;
         final port = uri.port > 0 ? uri.port : 51820;
+        if (privKey.isEmpty || pubKey.isEmpty || clientIp.isEmpty || host.isEmpty) {
+          throw FormatException('Profil WireGuard incomplet : clé privée, clé publique, adresse client et endpoint requis.');
+        }
         final name = uri.fragment.isNotEmpty ? Uri.decodeComponent(uri.fragment) : 'WireGuard (Geny) importé';
         acceptProfile(
           name: name,
@@ -582,9 +585,9 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
       if (link.contains('[Interface]') && (link.contains('[Peer]') || link.contains('PrivateKey'))) {
         final lines = link.split(RegExp(r'\r?\n'));
         String privKey = '';
-        String clientIp = '10.231.0.2/32';
-        String pubKey = '+Qu+gVMRhaR0hL3ePZwd+l+L/NQf8jOrf7QZLGJCUCU=';
-        String endpoint = '79.76.109.186:51820';
+        String clientIp = '';
+        String pubKey = '';
+        String endpoint = '';
         for (final line in lines) {
           final trimmed = line.trim();
           if (trimmed.startsWith('#') || trimmed.isEmpty) continue;
@@ -598,7 +601,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
             else if (key == 'endpoint') endpoint = val;
           }
         }
-        if (privKey.isNotEmpty) {
+        if (privKey.isNotEmpty && pubKey.isNotEmpty && clientIp.isNotEmpty && endpoint.isNotEmpty) {
           final epParts = endpoint.split(':');
           final host = epParts[0];
           final port = epParts.length > 1 ? (int.tryParse(epParts[1]) ?? 51820) : 51820;
@@ -2339,7 +2342,9 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
 
               final host = currentServer?.address.isNotEmpty == true
                   ? currentServer!.address
-                  : (_masterServerUrls.isNotEmpty ? Uri.parse(_masterServerUrls[0]).host : 'server.nexustunnel.me');
+                  : (_masterServerUrls.isNotEmpty
+                      ? Uri.parse(_masterServerUrls[0]).host
+                      : (Uri.tryParse(_configuredApiBaseUrl)?.host ?? ''));
               final port = currentServer?.port ?? 80;
 
               // 1. DNS Resolution
@@ -2521,7 +2526,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
                           SizedBox(width: 8),
                           OutlinedButton.icon(
                             onPressed: () {
-                              final host = currentServer?.address ?? 'server.nexustunnel.me';
+                              final host = currentServer?.address ?? (Uri.tryParse(_configuredApiBaseUrl)?.host ?? '');
                               final report = '--- RAPPORT DIAGNOSTIC ABESSVPN ---\n'
                                   'Date: ${DateTime.now().toIso8601String()}\n'
                                   'Cible: $host:${currentServer?.port ?? 80}\n'
