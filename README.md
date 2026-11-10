@@ -29,6 +29,8 @@ Une solution VPN comprenant :
 
 ## 📱 Application Mobile Flutter (`abess_vpn`)
 
+**Sécurité locale :** les profils importés (tokens, UUID et liens de connexion) sont stockés dans le stockage chiffré Android adossé au Keystore. Les anciennes copies en clair dans SharedPreferences sont migrées lors du premier lancement réussi, puis supprimées. La sauvegarde Android de l'application est désactivée afin de ne pas exporter ces secrets. Cette version requiert Android 6.0 (API 23) ou plus récent.
+
 ### Fonctionnalités
 - **Protocoles d'accès** : VLESS, VMess, Trojan et Shadowsocks (AEAD).
 - **Transports TLS/TCP** : WebSocket, gRPC, HTTPUpgrade et XHTTP sur le port HTTPS du serveur.
