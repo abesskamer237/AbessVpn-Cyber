@@ -10,22 +10,13 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:fl_chart/fl_chart.dart';
 
 final ValueNotifier<bool> abessDarkMode = ValueNotifier<bool>(true);
-
-class _AbessHttpOverrides extends HttpOverrides {
-  @override
-  HttpClient createHttpClient(SecurityContext? context) {
-    return super.createHttpClient(context)
-      ..badCertificateCallback = (X509Certificate cert, String host, int port) {
-        return host == '152.70.40.192' || host == 'server.nexustunnel.me' || host == '79.76.109.186';
-      };
-  }
-}
 
 /// Générateur standardisé de tokens unifiés ABESS-XXXXXXXXXXX
 String generateUnifiedToken() {
@@ -40,7 +31,6 @@ String generateUnifiedToken() {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  HttpOverrides.global = _AbessHttpOverrides();
   final prefs = await SharedPreferences.getInstance();
   abessDarkMode.value = prefs.getBool('abess_dark_mode') ?? true;
   SystemChrome.setPreferredOrientations([
@@ -293,6 +283,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
 
   // Profils conservés localement ; currentServer est le profil sélectionné.
   static const String _savedProfilesKey = 'abess_imported_servers';
+  static const FlutterSecureStorage _secureStorage = FlutterSecureStorage();
   static const String _selectedProfileKey = 'abess_selected_server_id';
   List<ImportedVpnServer> savedServers = <ImportedVpnServer>[];
   ImportedVpnServer? currentServer;
@@ -570,10 +561,13 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
         final uri = Uri.parse(link.replaceFirst('wireguard://', 'wg://'));
         final q = uri.queryParameters;
         final privKey = Uri.decodeComponent(uri.userInfo);
-        final pubKey = q['publickey'] ?? q['pubkey'] ?? q['server_pubkey'] ?? '+Qu+gVMRhaR0hL3ePZwd+l+L/NQf8jOrf7QZLGJCUCU=';
-        final clientIp = q['address'] ?? q['ip'] ?? '10.231.0.2/32';
-        final host = uri.host.isNotEmpty ? uri.host : '79.76.109.186';
+        final pubKey = q['publickey'] ?? q['pubkey'] ?? q['server_pubkey'] ?? '';
+        final clientIp = q['address'] ?? q['ip'] ?? '';
+        final host = uri.host;
         final port = uri.port > 0 ? uri.port : 51820;
+        if (privKey.isEmpty || pubKey.isEmpty || clientIp.isEmpty || host.isEmpty) {
+          throw FormatException('Profil WireGuard incomplet : clé privée, clé publique, adresse client et endpoint requis.');
+        }
         final name = uri.fragment.isNotEmpty ? Uri.decodeComponent(uri.fragment) : 'WireGuard (Geny) importé';
         acceptProfile(
           name: name,
@@ -593,9 +587,9 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
       if (link.contains('[Interface]') && (link.contains('[Peer]') || link.contains('PrivateKey'))) {
         final lines = link.split(RegExp(r'\r?\n'));
         String privKey = '';
-        String clientIp = '10.231.0.2/32';
-        String pubKey = '+Qu+gVMRhaR0hL3ePZwd+l+L/NQf8jOrf7QZLGJCUCU=';
-        String endpoint = '79.76.109.186:51820';
+        String clientIp = '';
+        String pubKey = '';
+        String endpoint = '';
         for (final line in lines) {
           final trimmed = line.trim();
           if (trimmed.startsWith('#') || trimmed.isEmpty) continue;
@@ -609,7 +603,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
             else if (key == 'endpoint') endpoint = val;
           }
         }
-        if (privKey.isNotEmpty) {
+        if (privKey.isNotEmpty && pubKey.isNotEmpty && clientIp.isNotEmpty && endpoint.isNotEmpty) {
           final epParts = endpoint.split(':');
           final host = epParts[0];
           final port = epParts.length > 1 ? (int.tryParse(epParts[1]) ?? 51820) : 51820;
@@ -645,9 +639,9 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
   }
 
   // Amélioration 1 : Kill Switch & Reconnexion Auto
-  bool isKillSwitchEnabled = true;
+  bool isDisconnectAlertEnabled = true;
   bool isAutoReconnectEnabled = true;
-  bool killSwitchAlert = false;
+  bool disconnectAlert = false;
   int _reconnectAttempts = 0;
   bool _userWantedConnection = false;
   Timer? _reconnectTimer;
@@ -663,28 +657,20 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
   final List<String> _logs = [];
 
   // URLs Serveurs Maîtres AbessVpn
-  static const String _configuredApiBaseUrl = String.fromEnvironment('ABESS_API_BASE_URL', defaultValue: 'https://server.nexustunnel.me:2096');
+  static const String _configuredApiBaseUrl = String.fromEnvironment('ABESS_API_BASE_URL', defaultValue: 'https://panel.pagnol.xyz');
 
-  // The control-plane address is supplied at build time; defaults to NexusTunnel server.
+  // The API control-plane hostname is injected by CI. Never fall back to old
+  // hosts or raw IPs: doing so could send licence tokens to a retired server.
   static final List<String> _robustMasterUrls = () {
-    final list = <String>[];
-    var configured = _configuredApiBaseUrl.trim().replaceFirst(RegExp(r'/+$'), '');
-    if (configured.isNotEmpty && !configured.contains('panel.pagnol.xyz')) {
-      if (!configured.startsWith('http://') && !configured.startsWith('https://')) {
-        configured = 'https://$configured';
-      }
-      list.add(configured);
+    final configured = _configuredApiBaseUrl.trim().replaceFirst(RegExp(r'/+$'), '');
+    if (configured.isEmpty || !configured.startsWith('https://')) {
+      return <String>[];
     }
-    const robustDefaults = [
-      'https://server.nexustunnel.me:2096',
-      'https://server.nexustunnel.me',
-      'https://152.70.40.192:2096',
-      'https://152.70.40.192',
-    ];
-    for (final def in robustDefaults) {
-      if (!list.contains(def)) list.add(def);
+    final parsed = Uri.tryParse(configured);
+    if (parsed == null || parsed.scheme != 'https' || parsed.host.isEmpty || !parsed.hasAuthority) {
+      return <String>[];
     }
-    return list;
+    return <String>[configured];
   }();
   final List<String> _masterServerUrls = _robustMasterUrls;
 
@@ -1243,16 +1229,16 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
               isConnected = true;
               isConnecting = false;
               _reconnectAttempts = 0;
-              killSwitchAlert = false;
+              disconnectAlert = false;
               if (!wasConnected) _startTelemetry();
             } else if (status.state == 'DISCONNECTED') {
               isConnected = false;
               isConnecting = false;
               _stopTelemetry();
               if (_userWantedConnection) {
-                if (isKillSwitchEnabled) {
-                  killSwitchAlert = true;
-                  _addLog('KILL SWITCH ACTIF : TOUT TRAFIC NON CHIFFRÉ BLOQUÉ');
+                if (isDisconnectAlertEnabled) {
+                  disconnectAlert = true;
+                  _addLog('ALERTE : le tunnel VPN est interrompu. Android peut reprendre le trafic hors VPN. Activez le VPN permanent et le blocage sans VPN dans les paramètres Android pour un verrouillage système.');
                 }
                 if (isAutoReconnectEnabled && _reconnectAttempts < 5) {
                   _reconnectAttempts++;
@@ -1340,56 +1326,117 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
     return 'manual:${server.protocol.toLowerCase()}|${server.transport.toLowerCase()}|${server.address.toLowerCase()}|${server.port}|${server.uuid}|${server.path}|${server.sni}|${server.wsHost}';
   }
 
+  Future<void> _setDisconnectAlertEnabled(bool enabled) async {
+    if (mounted) {
+      setState(() => isDisconnectAlertEnabled = enabled);
+    }
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('abess_disconnect_alert', enabled);
+  }
+
+  Future<void> _setAutoReconnectEnabled(bool enabled) async {
+    if (mounted) {
+      setState(() => isAutoReconnectEnabled = enabled);
+    }
+    if (!enabled) _reconnectTimer?.cancel();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('abess_auto_reconnect', enabled);
+  }
+
+
   Future<void> _persistProfileState() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
-      _savedProfilesKey,
-      jsonEncode(savedServers.map(_serverToJsonMap).toList()),
-    );
+    final encodedProfiles = jsonEncode(savedServers.map(_serverToJsonMap).toList());
+
+    try {
+      // Tokens, UUIDs, encrypted links and connection credentials belong in
+      // Android Keystore-backed secure storage, never in plain SharedPreferences.
+      await _secureStorage.write(key: _savedProfilesKey, value: encodedProfiles);
+    } catch (error) {
+      _addLog('STOCKAGE SÉCURISÉ INDISPONIBLE : profils non enregistrés ($error)');
+      _showToast('Stockage sécurisé indisponible. La configuration n’a pas été sauvegardée.');
+      return;
+    }
+
+    // Remove legacy plaintext copies only after the secure write succeeded.
+    await prefs.remove(_savedProfilesKey);
+    await prefs.remove('abess_imported_server');
+
     if (currentServer == null) {
       await prefs.remove(_selectedProfileKey);
-      await prefs.remove('abess_imported_server');
     } else {
       await prefs.setString(_selectedProfileKey, currentServer!.id);
-      // Keep the legacy key in sync so older builds can still recover the active profile.
-      await prefs.setString('abess_imported_server', jsonEncode(_serverToJsonMap(currentServer!)));
     }
   }
 
   Future<void> _loadSavedServer() async {
     final prefs = await SharedPreferences.getInstance();
     if (!mounted) return;
+    final disconnectAlertPreference = prefs.getBool('abess_disconnect_alert') ??
+        prefs.getBool('abess_kill_switch') ??
+        true;
     setState(() {
-      isKillSwitchEnabled = prefs.getBool('abess_kill_switch') ?? true;
+      isDisconnectAlertEnabled = disconnectAlertPreference;
       isAutoReconnectEnabled = prefs.getBool('abess_auto_reconnect') ?? true;
     });
+    if (!prefs.containsKey('abess_disconnect_alert')) {
+      await prefs.setBool('abess_disconnect_alert', disconnectAlertPreference);
+    }
 
     final loaded = <ImportedVpnServer>[];
-    final storedList = prefs.getString(_savedProfilesKey);
+    void appendProfile(dynamic item) {
+      if (item is! Map) return;
+      final server = _serverFromJsonMap(Map<String, dynamic>.from(item));
+      if (server.address.isNotEmpty && server.uuid.isNotEmpty) loaded.add(server);
+    }
+
+    String? secureStoredList;
     try {
-      if (storedList != null) {
-        final decoded = jsonDecode(storedList);
-        if (decoded is List) {
+      secureStoredList = await _secureStorage.read(key: _savedProfilesKey);
+    } catch (error) {
+      _addLog('LECTURE DU STOCKAGE SÉCURISÉ IMPOSSIBLE : $error');
+    }
+
+    var loadedFromSecureStorage = false;
+    if (secureStoredList != null) {
+      try {
+        final decoded = jsonDecode(secureStoredList);
+        if (decoded is! List) throw const FormatException('La liste sécurisée des profils est invalide.');
+        for (final item in decoded) {
+          appendProfile(item);
+        }
+        loadedFromSecureStorage = true;
+      } catch (error) {
+        loaded.clear();
+        _addLog('PROFILS SÉCURISÉS ILLISIBLES : $error. Tentative de récupération des anciennes données.');
+      }
+    }
+
+    if (!loadedFromSecureStorage) {
+      final sharedProfiles = prefs.getString(_savedProfilesKey);
+      if (sharedProfiles != null) {
+        try {
+          final decoded = jsonDecode(sharedProfiles);
+          if (decoded is! List) throw const FormatException('La liste historique des profils est invalide.');
           for (final item in decoded) {
-            if (item is Map) {
-              final server = _serverFromJsonMap(Map<String, dynamic>.from(item));
-              if (server.address.isNotEmpty && server.uuid.isNotEmpty) loaded.add(server);
-            }
+            appendProfile(item);
           }
+        } catch (error) {
+          loaded.clear();
+          _addLog('ANCIENNE LISTE DE PROFILS ILLISIBLE : $error');
         }
       } else {
-        // One-time migration from the previous single-profile storage key.
+        // One-time migration from the previous single-profile plaintext key.
         final legacy = prefs.getString('abess_imported_server');
         if (legacy != null) {
-          final decoded = jsonDecode(legacy);
-          if (decoded is Map) {
-            final server = _serverFromJsonMap(Map<String, dynamic>.from(decoded));
-            if (server.address.isNotEmpty && server.uuid.isNotEmpty) loaded.add(server);
+          try {
+            final decoded = jsonDecode(legacy);
+            if (decoded is Map) appendProfile(decoded);
+          } catch (error) {
+            _addLog('ANCIEN PROFIL ILLISIBLE : $error');
           }
         }
       }
-    } catch (error) {
-      _addLog('PROFILS SAUVEGARDÉS ILLISIBLES : $error');
     }
 
     final wantedId = prefs.getString(_selectedProfileKey);
@@ -1406,7 +1453,17 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
       savedServers = loaded;
       currentServer = selected;
     });
-    if (storedList == null && loaded.isNotEmpty) await _persistProfileState();
+
+    if (loadedFromSecureStorage) {
+      // Only remove plaintext copies after a valid secure copy was parsed.
+      await prefs.remove(_savedProfilesKey);
+      await prefs.remove('abess_imported_server');
+    } else if (loaded.isNotEmpty) {
+      // Migration is crash-safe: _persistProfileState deletes plaintext copies
+      // only after Android Keystore-backed storage confirms the secure write.
+      await _persistProfileState();
+    }
+
     if (selected == null) {
       _addLog('AUCUN SERVEUR ACTIF : IMPORTez un token ou un lien de configuration');
     } else {
@@ -2361,7 +2418,9 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
 
               final host = currentServer?.address.isNotEmpty == true
                   ? currentServer!.address
-                  : (_masterServerUrls.isNotEmpty ? Uri.parse(_masterServerUrls[0]).host : 'server.nexustunnel.me');
+                  : (_masterServerUrls.isNotEmpty
+                      ? Uri.parse(_masterServerUrls[0]).host
+                      : (Uri.tryParse(_configuredApiBaseUrl)?.host ?? ''));
               final port = currentServer?.port ?? 80;
 
               // 1. DNS Resolution
@@ -2543,7 +2602,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
                           SizedBox(width: 8),
                           OutlinedButton.icon(
                             onPressed: () {
-                              final host = currentServer?.address ?? 'server.nexustunnel.me';
+                              final host = currentServer?.address ?? (Uri.tryParse(_configuredApiBaseUrl)?.host ?? '');
                               final report = '--- RAPPORT DIAGNOSTIC ABESSVPN ---\n'
                                   'Date: ${DateTime.now().toIso8601String()}\n'
                                   'Cible: $host:${currentServer?.port ?? 80}\n'
@@ -2643,12 +2702,12 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
     if (isConnected || isConnecting) {
       _userWantedConnection = false;
       _reconnectTimer?.cancel();
-      setState(() => killSwitchAlert = false);
+      setState(() => disconnectAlert = false);
       await _disconnectVpn();
     } else {
       _userWantedConnection = true;
       _reconnectAttempts = 0;
-      setState(() => killSwitchAlert = false);
+      setState(() => disconnectAlert = false);
       await _connectVpn();
     }
   }
@@ -2792,9 +2851,9 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
     if (transport == 'native' && protocol != 'shadowsocks' && protocol != 'wireguard' && protocol != 'geny') {
       throw UnsupportedError('Le mode TCP + UDP natif est disponible uniquement avec Shadowsocks ou WireGuard.');
     }
-    final effectiveTransport = transport == 'tcp' ? 'raw' : (transport == 'mkcp' ? 'kcp' : transport);
+    final effectiveTransport = transport == 'mkcp' ? 'kcp' : transport;
     if ((effectiveTransport == 'raw' || effectiveTransport == 'kcp') && protocol != 'vmess' && srv.token != 'RAW-LINK-IMPORT') {
-      throw UnsupportedError('RAW/TCP et mKCP/UDP sont réservés à VMess sur le serveur ABESS.');
+      throw UnsupportedError('RAW et mKCP/UDP sont réservés à VMess sur le serveur ABESS.');
     }
     if (protocol == 'trojan' && !srv.tls) {
       throw UnsupportedError('Trojan sur un serveur public nécessite TLS.');
@@ -2923,6 +2982,12 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
               'host': srv.wsHost.isNotEmpty ? srv.wsHost : srv.address,
               'mode': 'auto'
             }
+          };
+          break;
+        case 'tcp':
+          transportSettings = {
+            'network': 'tcp',
+            'tcpSettings': {'header': {'type': 'none'}}
           };
           break;
         case 'raw':
@@ -3178,13 +3243,13 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
               token: cleanToken,
               deviceLimit: data['deviceLimit'] ?? 1,
             );
-            final apiTlsHost = Uri.tryParse(_configuredApiBaseUrl)?.host.toLowerCase() ?? '';
             const tlsWebTransports = {'ws', 'grpc', 'httpupgrade', 'xhttp'};
             if (newServer.tls &&
                 tlsWebTransports.contains(newServer.transport.toLowerCase()) &&
-                apiTlsHost.isNotEmpty &&
-                newServer.sni.toLowerCase() != apiTlsHost) {
-              _addLog('ALERTE TLS : SNI ${newServer.sni} différent du domaine HTTPS ${apiTlsHost}. Le certificat peut être refusé et aucun trafic ne passera. Recréez le profil avec le SNI couvert par le certificat.');
+                newServer.sni.trim().isEmpty) {
+              _addLog('ALERTE TLS : le profil VPN ne contient pas de SNI. Vérifiez le nom couvert par le certificat du serveur VPN.');
+            } else if (newServer.tls && tlsWebTransports.contains(newServer.transport.toLowerCase())) {
+              _addLog('TLS : SNI VPN configuré indépendamment du domaine API.');
             }
             if (isSsh) {
               _addLog('PROFIL SSH-PAYLOAD IMPORTÉ : ${newServer.name} (${newServer.address}:${newServer.port})');
@@ -5250,18 +5315,18 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
 
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  value: isKillSwitchEnabled,
-                  onChanged: (val) => setState(() => isKillSwitchEnabled = val),
+                  value: isDisconnectAlertEnabled,
+                  onChanged: _setDisconnectAlertEnabled,
                   activeTrackColor: cyberRed,
-                  title: Text("Kill Switch Anti-Fuite", style: TextStyle(color: _textPrimary, fontSize: 12, fontWeight: FontWeight.bold)),
-                  subtitle: Text("Coupe automatiquement le trafic si le tunnel VPN se déconnecte.", style: TextStyle(color: _text54, fontSize: 10)),
+                  title: Text("Alerte de déconnexion VPN", style: TextStyle(color: _textPrimary, fontSize: 12, fontWeight: FontWeight.bold)),
+                  subtitle: Text("Alerte et journalise la coupure. Ne bloque pas le réseau Android hors tunnel ; activez « VPN permanent » et « Bloquer les connexions sans VPN » dans les paramètres système pour un vrai verrouillage.", style: TextStyle(color: _text54, fontSize: 10)),
                 ),
                 Divider(color: _text12),
 
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   value: isAutoReconnectEnabled,
-                  onChanged: (val) => setState(() => isAutoReconnectEnabled = val),
+                  onChanged: _setAutoReconnectEnabled,
                   activeTrackColor: cyberYellow,
                   title: Text("Reconnexion Automatique", style: TextStyle(color: _textPrimary, fontSize: 12, fontWeight: FontWeight.bold)),
                   subtitle: Text("Tente de reconnecter le VPN automatiquement en cas de perte de réseau.", style: TextStyle(color: _text54, fontSize: 10)),

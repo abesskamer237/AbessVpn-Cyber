@@ -86,7 +86,7 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]] || { echo "Use a version tag like v2.1.0"; exit 1; }
-          VPN_DOMAIN="${VPN_DOMAIN:-server.nexustunnel.me:2096}"
+          VPN_DOMAIN="${VPN_DOMAIN:-panel.pagnol.xyz}"
           [[ "$VPN_DOMAIN" =~ ^[A-Za-z0-9.:-]+$ ]] || { echo "Set repository variable VPN_DOMAIN to a host:port or hostname only."; exit 1; }
 
       - name: Prepare Android project
@@ -109,11 +109,11 @@ jobs:
             rm -rf "$tmp_dir"
           fi
           if [ -f android/app/build.gradle ]; then
-            sed -i "s/minSdkVersion.*/minSdkVersion 21/" android/app/build.gradle || true
-            sed -i "s/minSdk .*/minSdk 21/" android/app/build.gradle || true
+            sed -i "s/minSdkVersion.*/minSdkVersion 23/" android/app/build.gradle || true
+            sed -i "s/minSdk .*/minSdk 23/" android/app/build.gradle || true
           fi
           if [ -f android/app/build.gradle.kts ]; then
-            sed -i "s/minSdk = flutter.minSdkVersion/minSdk = 21/" android/app/build.gradle.kts || true
+            sed -i "s/minSdk = flutter.minSdkVersion/minSdk = 23/" android/app/build.gradle.kts || true
           fi
 
       - name: Configure persistent Android release signing
@@ -141,24 +141,8 @@ jobs:
             echo "ANDROID_KEY_PASSWORD=$ANDROID_KEY_PASSWORD" >> "$GITHUB_ENV"
             echo "Persistent release keystore is present and the configured alias was found."
           else
-            echo "Notice: ANDROID_KEYSTORE_BASE64 secret not found; generating dedicated release keystore..."
-            STORE_PASS="AbessVpn2026CommercialReleaseSecretKey!"
-            KEY_ALIAS="abesskey"
-            keytool -genkeypair -v \
-              -keystore "$KEYSTORE_PATH" \
-              -alias "$KEY_ALIAS" \
-              -keyalg RSA \
-              -keysize 2048 \
-              -validity 10000 \
-              -storepass "$STORE_PASS" \
-              -keypass "$STORE_PASS" \
-              -dname "CN=AbessVpn, OU=Commercial, O=Abess, L=Yaounde, ST=Centre, C=CM"
-            chmod 600 "$KEYSTORE_PATH"
-            echo "ANDROID_KEYSTORE_PATH=$KEYSTORE_PATH" >> "$GITHUB_ENV"
-            echo "ANDROID_STORE_PASSWORD=$STORE_PASS" >> "$GITHUB_ENV"
-            echo "ANDROID_KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
-            echo "ANDROID_KEY_PASSWORD=$STORE_PASS" >> "$GITHUB_ENV"
-            echo "Fallback release keystore generated successfully."
+            echo "ANDROID_KEYSTORE_BASE64 is required for official releases; configure the persistent signing secrets." >&2
+            exit 1
           fi
       - name: Install dependencies
         if: steps.guard.outputs.publish == 'true'
@@ -196,7 +180,7 @@ jobs:
             exit 1
           fi
           VERSION_NAME="${RELEASE_TAG#v}"
-          VPN_DOMAIN="${VPN_DOMAIN:-server.nexustunnel.me:2096}"
+          VPN_DOMAIN="${VPN_DOMAIN:-panel.pagnol.xyz}"
           # 1. Build optimized per-ABI split APKs (arm64-v8a: ~20MB, armeabi-v7a: ~18MB)
           flutter build apk --release --split-per-abi --no-tree-shake-icons \
             --build-name="$VERSION_NAME" --build-number="$GITHUB_RUN_NUMBER" \

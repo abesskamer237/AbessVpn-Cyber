@@ -29,6 +29,8 @@ Une solution VPN comprenant :
 
 ## 📱 Application Mobile Flutter (`abess_vpn`)
 
+**Sécurité locale :** les profils importés (tokens, UUID et liens de connexion) sont stockés dans le stockage chiffré Android adossé au Keystore. Les anciennes copies en clair dans SharedPreferences sont migrées lors du premier lancement réussi, puis supprimées. La sauvegarde Android de l'application est désactivée afin de ne pas exporter ces secrets. Cette version requiert Android 6.0 (API 23) ou plus récent.
+
 ### Fonctionnalités
 - **Protocoles d'accès** : VLESS, VMess, Trojan et Shadowsocks (AEAD).
 - **Transports TLS/TCP** : WebSocket, gRPC, HTTPUpgrade et XHTTP sur le port HTTPS du serveur.
@@ -78,72 +80,16 @@ N'utilise pas de compte ou mot de passe d'exemple en production. Pour le déploi
 
 ---
 
-## 🛠️ Installation du Serveur sur un VPS Linux
+## 🖥️ Déploiement du serveur
 
-### Option 1 : Installation Automatique 1-Click (Recommandée)
-Sur votre serveur VPS (Ubuntu 20.04/22.04/24.04 ou Debian 11/12) :
+<escape>IMPORTANT</escape> : le backend historique de ce dépôt a été retiré. Ce dépôt est désormais destiné au client Android Flutter.
 
-```bash
-git clone https://github.com/abesskamer237/AbessVpn-Cyber.git
-cd AbessVpn-Cyber
-chmod +x install.sh
-sudo ./install.sh
-```
+**Ne lance plus** les anciennes commandes `sudo ./install.sh`, `npm start`, `docker-compose up` ou l'ancien service `abessvpn.service` depuis ce dépôt. Ces chemins sont neutralisés afin d'éviter de remettre en service l'ancien backend et ses identifiants de démonstration.
 
-Le script installe automatiquement Node.js 22 LTS, NGINX, Certbot SSL, configure le service Systemd `abessvpn.service` et démarre le serveur.
+Le seul control plane serveur maintenu est :
+[AbessVpn-Server-Panel](https://github.com/abesskamer237/AbessVpn-Server-Panel).
 
----
-
-### Option 2 : Déploiement avec Docker & Docker Compose
-
-```bash
-# Lancer en arrière-plan
-docker-compose up -d --build
-
-# Vérifier les logs du serveur
-docker-compose logs -f
-```
-
----
-
-### Option 3 : Installation Manuelle (Systemd)
-
-```bash
-# 1. Installer Node.js 22
-curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
-apt-get install -y nodejs
-
-# 2. Installer les dépendances
-npm install
-
-# 3. Démarrer en développement / test
-npm start
-
-# 4. Activer le service Systemd
-cp abessvpn.service /etc/systemd/system/
-systemctl daemon-reload
-systemctl enable abessvpn
-systemctl start abessvpn
-```
-
----
-
-## 🔒 Configuration Reverse Proxy NGINX & SSL/TLS
-
-Le fichier `nginx.conf` fourni gère la terminaison SSL/TLS Let's Encrypt et le proxying WebSocket sur `/@abess237` :
-
-```nginx
-# Copier la configuration vers NGINX
-cp nginx.conf /etc/nginx/sites-available/abessvpn
-ln -s /etc/nginx/sites-available/abessvpn /etc/nginx/sites-enabled/
-nginx -t
-systemctl reload nginx
-
-# Obtenir un certificat SSL gratuit avec Certbot
-certbot --nginx -d vpn.votre-domaine.com
-```
-
----
+Pour déployer le serveur, utilise son README et ses workflows GitHub Actions. Configure notamment `VPN_DOMAIN`, `ADMIN_EMAIL`, `ADMIN_INITIAL_PASSWORD`, `MASTER_SECRET` et les identifiants SSH requis dans les secrets/variables du dépôt serveur. Ne copie jamais les secrets dans le code, les APK ou les commits.
 
 ## 📡 Spécification des Endpoints API REST
 
@@ -155,8 +101,8 @@ certbot --nginx -d vpn.votre-domaine.com
 | `POST` | `/api/v1/auth/login` | Connexion Administrateur / Revendeur |
 | `POST` | `/api/v1/auth/token` | Validation de licence client mobile |
 | `POST` | `/api/v1/client/telemetry` | Synchronisation consommations & quotas |
-| `POST` | `/api/v1/client/claim-free-trial` | Activation du pass 1 Go / 24h anti-fraude |
-| `POST` | `/api/v1/client/create-token` | Génération de token client avec quota/durée |
+| `POST` | `/api/v1/client/claim-free-trial` | Désactivé (HTTP 503) tant que l'anti-fraude et le data plane ne sont pas prêts |
+| `POST` | `/api/v1/client/create-token` | Refusé (HTTP 403) ; création réservée au panneau authentifié |
 | `GET` | `/api/v1/admin/resellers` | Liste des revendeurs (Super Admin) |
 | `POST` | `/api/v1/admin/resellers` | Création d'un revendeur |
 | `PUT` | `/api/v1/admin/resellers/:id/credit` | Recharge du solde de crédits en Go |

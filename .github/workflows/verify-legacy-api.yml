@@ -43,7 +43,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if grep -nEi 'run[.]app|ai[.]studio|crashlyticsreports-pa[.]googleapis[.]com|konoyves[.]shop|abess-ops-hub-d-ploiement-docker' server.ts lib/main.dart; then
-            echo "Remove obsolete host/SNI defaults; configure the real endpoint in the admin panel." >&2
+          if grep -nEi 'run[.]app|ai[.]studio|crashlyticsreports-pa[.]googleapis[.]com|konoyves[.]shop|abess-ops-hub-d-ploiement-docker|server[.]nexustunnel[.]me|152[.]70[.]40[.]192|79[.]76[.]109[.]186|badCertificateCallback|HttpOverrides' lib/main.dart; then
+            echo "Remove retired API hosts and all certificate-validation bypasses from the Android client." >&2
             exit 1
           fi
+          if grep -nF "configured.startsWith('http://')" lib/main.dart; then
+            echo "The Android client must not accept an HTTP API base URL." >&2
+            exit 1
+          fi
+          grep -qF "!configured.startsWith('https://')" lib/main.dart
+          grep -qF "parsed.scheme != 'https'" lib/main.dart

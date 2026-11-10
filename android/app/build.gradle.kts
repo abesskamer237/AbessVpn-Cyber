@@ -33,8 +33,8 @@ android {
         applicationId = "com.example.abess_vpn"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        // Required by flutter_v2ray (minSdk >= 21)
-        minSdk = 21
+        // flutter_secure_storage 10.x requires Android 6.0 (API 23) or newer.
+        minSdk = 23
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode()
         versionName = flutter.versionName()
