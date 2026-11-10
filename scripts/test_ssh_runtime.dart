@@ -252,6 +252,30 @@ Future<void> main() async {
       ),
       'Wrong host key must fail',
     );
+    final rawPlainJson = {
+      ...json,
+      'transport': 'ws',
+      'port': json['wsPort'],
+      'tls': false,
+      'path': '/ws-ssh',
+    };
+    final rawPlain = AbessSshRuntime();
+    runtimes.add(rawPlain);
+    await rawPlain.start(
+      AbessSshProfile.fromJson(rawPlainJson),
+      onDisconnected: () {},
+    );
+    await transfer(rawPlain, json['targetPort'] as int);
+    await testXray(rawPlain, json['targetPort'] as int, directory);
+    final rejectedHttp = AbessSshRuntime();
+    runtimes.add(rejectedHttp);
+    await refuses(
+      () => rejectedHttp.start(
+        AbessSshProfile.fromJson({...rawPlainJson, 'port': json['rejectPort']}),
+        onDisconnected: () {},
+      ),
+      'HTTP 200 cannot impersonate an Upgrade tunnel',
+    );
     final tlsJson = {
       ...json,
       'transport': 'wss',
@@ -269,6 +293,27 @@ Future<void> main() async {
       ),
       'Untrusted TLS certificate must fail',
     );
+    final untrustedRaw = AbessSshRuntime();
+    runtimes.add(untrustedRaw);
+    await refuses(
+      () => untrustedRaw.start(
+        AbessSshProfile.fromJson({...tlsJson, 'transport': 'wss-raw'}),
+        onDisconnected: () {},
+      ),
+      'Raw SSH-WS TLS must reject an untrusted certificate',
+    );
+    final unpinnedRaw = AbessSshRuntime();
+    runtimes.add(unpinnedRaw);
+    await refuses(
+      () => unpinnedRaw.start(
+        AbessSshProfile.fromJson({
+          ...rawPlainJson,
+          'fingerprint': 'SHA256:${'A' * 43}',
+        }),
+        onDisconnected: () {},
+      ),
+      'Plain SSH-WS must still verify the SSH host key',
+    );
     SecurityContext.defaultContext.setTrustedCertificates(
       '${directory.path}/tls.crt',
     );
@@ -276,6 +321,30 @@ Future<void> main() async {
     runtimes.add(tls);
     await tls.start(AbessSshProfile.fromJson(tlsJson), onDisconnected: () {});
     await transfer(tls, json['targetPort'] as int);
+    final rawTls = AbessSshRuntime();
+    runtimes.add(rawTls);
+    await rawTls.start(
+      AbessSshProfile.fromJson({...tlsJson, 'transport': 'wss-raw-alt'}),
+      onDisconnected: () {},
+    );
+    await transfer(rawTls, json['targetPort'] as int);
+    final handshakes =
+        jsonDecode(
+              await File(
+                '${directory.path}/http-handshakes.json',
+              ).readAsString(),
+            )
+            as List;
+    check(
+      handshakes.length >= 2 &&
+          handshakes.every(
+            (v) =>
+                v['path'] == '/ws-ssh' &&
+                v['upgrade'] == 'websocket' &&
+                v['connection'] == 'Upgrade',
+          ),
+      'Actual raw HTTP Upgrade payload used in plain and TLS SSH-WS',
+    );
     var rejected = false;
     try {
       AbessSshProfile.fromJson({...json, 'fingerprint': null});
@@ -291,7 +360,7 @@ Future<void> main() async {
       'JSON credentials redacted',
     );
     print(
-      'Dart SSH runtime PASS: TCP, verified WSS, SHA256 pin rejection, authenticated SOCKS, real HTTP, DNS routing and no direct fallback.',
+      'Dart SSH runtime PASS: TCP, raw SSH-WS HTTP/TLS, HTTP 200 rejection, verified WSS, SHA256 pin rejection, authenticated SOCKS, real HTTP, DNS routing and no direct fallback.',
     );
   } finally {
     for (final runtime in runtimes) {

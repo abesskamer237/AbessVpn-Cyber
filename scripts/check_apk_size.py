@@ -57,7 +57,7 @@ def main():
         rows.append(f"| {report['file']} | {', '.join(report['abis'])} | {report['megabytes']:.2f} Mo |")
         print(f"{report['file']}: {report['megabytes']:.2f} MB — packaging and size checks passed")
     rows += ['', 'Choisissez ARM64 pour un téléphone arm64-v8a, ARM32 pour armeabi-v7a. Le fichier universel est plus gros car il contient plusieurs architectures.', '',
-             'Android 6.0 ou supérieur. Les moteurs natifs restent inclus et sont décompressés à l’installation : la taille installée est supérieure à celle du téléchargement.', '']
+             'Android 7.0 ou supérieur. Les moteurs natifs restent inclus et sont décompressés à l’installation : la taille installée est supérieure à celle du téléchargement.', '']
     args.markdown.parent.mkdir(parents=True, exist_ok=True)
     args.markdown.write_text('\n'.join(rows))
 

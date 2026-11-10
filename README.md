@@ -148,3 +148,9 @@ Importer le JSON exporté par **Comptes SSH** du panel, via le sélecteur de fic
 ## APK allégés (2.5.2+)
 
 Téléchargez la variante ARM64 ou ARM32 adaptée à votre téléphone ; la variante universelle est plus volumineuse. Les bibliothèques natives sont compressées, les données géographiques inutilisées sont exclues et les icônes sont réduites. Les tailles réelles et les budgets vérifiés avant publication figurent dans `APK-SIZES.md` sur la release et dans [le guide de taille](docs/APK_SIZE.md).
+
+## SSH-WS HTTP Upgrade brut (2.5.4+)
+
+Le JSON du panel prend désormais en charge `ws` (HTTP 80), `ws-alt` (HTTP 85 ou port alternatif configuré), `wss-raw` (TLS 443) et `wss-raw-alt` (TLS 2084). Ces modes envoient un GET HTTP Upgrade, exigent le statut 101 puis transportent directement SSH, sans trames WebSocket. L’empreinte SSH est vérifiée même sans TLS. Les anciens profils `wss` et `wss-alt` utilisent toujours le WebSocket standard avec certificat vérifié. Le mode exact est conservé à l’import, au redémarrage et lors d’une copie de configuration.
+
+Exporter le mode **SSH-WS · HTTP Upgrade brut — 80** depuis le panel, puis importer le JSON dans cette version de l’APK. Le SSH chiffre le contenu ; les en-têtes HTTP ne sont pas protégés par TLS dans le mode HTTP. TCP et DNS sont transportés, les autres flux UDP restent bloqués.

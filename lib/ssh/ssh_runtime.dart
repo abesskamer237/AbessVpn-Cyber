@@ -29,6 +29,9 @@ class AbessSshProfile {
     this.quotaGb = 10,
     this.usedGb = 0,
   });
+  bool get usesTls => transport.startsWith('wss');
+  bool get usesUpgrade =>
+      const ['ws', 'ws-alt', 'wss-raw', 'wss-raw-alt'].contains(transport);
   factory AbessSshProfile.fromJson(Map<String, dynamic> value) {
     final host = value['host']?.toString() ?? '';
     final port = (value['port'] as num?)?.toInt() ?? 0;
@@ -47,15 +50,22 @@ class AbessSshProfile {
         pass.length < 12 ||
         pass.length > 256 ||
         !RegExp(r'^SHA256:[A-Za-z0-9+/]{43}$').hasMatch(pin) ||
-        !['tcp', 'wss', 'wss-alt'].contains(transport) ||
+        ![
+          'tcp',
+          'ws',
+          'ws-alt',
+          'wss-raw',
+          'wss-raw-alt',
+          'wss',
+          'wss-alt',
+        ].contains(transport) ||
         expiry == null ||
         !expiry.isAfter(DateTime.now()) ||
         !quota.isFinite ||
         quota <= 0 ||
-        (transport != 'tcp' &&
-            (value['tls'] != true ||
-                value['sni'] != host ||
-                value['path'] != '/ws-ssh'))) {
+        (value['tls'] != transport.startsWith('wss')) ||
+        (transport.startsWith('wss') && value['sni'] != host) ||
+        (transport != 'tcp' && value['path'] != '/ws-ssh')) {
       throw const FormatException(
         'Configuration SSH ABESS invalide, expirée ou dépourvue d’empreinte serveur.',
       );
@@ -72,6 +82,124 @@ class AbessSshProfile {
       usedGb: (value['usedGb'] as num?)?.toDouble() ?? 0,
     );
   }
+}
+
+/// HTTP Upgrade followed by raw SSH bytes (no RFC6455 frames). The initial
+/// response and SSH banner can share a TCP packet; retain every byte after CRLF.
+class _HttpUpgradeTransport implements SSHSocket {
+  final Socket socket;
+  final StreamIterator<Uint8List> input;
+  final Uint8List pending;
+  _HttpUpgradeTransport(this.socket, this.input, this.pending);
+  static Future<SSHSocket> connect(AbessSshProfile profile) async {
+    final Socket socket = profile.usesTls
+        ? await SecureSocket.connect(
+            profile.host,
+            profile.port,
+            timeout: const Duration(seconds: 15),
+          )
+        : await Socket.connect(
+            profile.host,
+            profile.port,
+            timeout: const Duration(seconds: 15),
+          );
+    final iterator = StreamIterator<Uint8List>(socket);
+    try {
+      final authority = [80, 443].contains(profile.port)
+          ? profile.host
+          : '${profile.host}:${profile.port}';
+      socket.add(
+        ascii.encode(
+          'GET /ws-ssh HTTP/1.1\r\nHost: $authority\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n',
+        ),
+      );
+      await socket.flush();
+      Future<Uint8List> headers() async {
+        final buffer = <int>[];
+        while (await iterator.moveNext()) {
+          buffer.addAll(iterator.current);
+          var boundary = -1;
+          for (var i = 0; i + 3 < buffer.length; i++) {
+            if (buffer[i] == 13 &&
+                buffer[i + 1] == 10 &&
+                buffer[i + 2] == 13 &&
+                buffer[i + 3] == 10) {
+              boundary = i;
+              break;
+            }
+          }
+          if ((boundary < 0 && buffer.length > 8192) || boundary > 8192)
+            throw const FormatException(
+              'Réponse HTTP SSH-WS trop volumineuse.',
+            );
+          if (boundary < 0) continue;
+          final lines = ascii.decode(buffer.sublist(0, boundary)).split('\r\n');
+          if (!RegExp(r'^HTTP/1\.[01] 101(?: |$)').hasMatch(lines.first)) {
+            throw const FormatException(
+              'Le serveur n’accepte pas le tunnel SSH-WS (HTTP 101 attendu).',
+            );
+          }
+          final fields = <String, String>{};
+          for (final line in lines.skip(1)) {
+            final colon = line.indexOf(':');
+            if (colon <= 0)
+              throw const FormatException('En-tête SSH-WS invalide.');
+            fields[line.substring(0, colon).trim().toLowerCase()] = line
+                .substring(colon + 1)
+                .trim()
+                .toLowerCase();
+          }
+          if (fields['upgrade'] != 'websocket' ||
+              !(fields['connection'] ?? '')
+                  .split(',')
+                  .map((v) => v.trim())
+                  .contains('upgrade')) {
+            throw const FormatException(
+              'Le serveur n’a pas confirmé HTTP Upgrade WebSocket.',
+            );
+          }
+          return Uint8List.fromList(buffer.sublist(boundary + 4));
+        }
+        throw const SocketException(
+          'Connexion fermée avant le handshake SSH-WS.',
+        );
+      }
+
+      final pending = await headers().timeout(const Duration(seconds: 15));
+      return _HttpUpgradeTransport(socket, iterator, pending);
+    } catch (_) {
+      socket.destroy();
+      await iterator.cancel();
+      rethrow;
+    }
+  }
+
+  @override
+  Stream<Uint8List> get stream async* {
+    if (pending.isNotEmpty) yield pending;
+    while (await input.moveNext()) {
+      yield input.current;
+    }
+  }
+
+  @override
+  StreamSink<List<int>> get sink => socket;
+  @override
+  Future<void> get done =>
+      socket.done.then<void>((_) {}, onError: (Object _, StackTrace __) {});
+  @override
+  Future<void> close() async {
+    await socket.close();
+  }
+
+  @override
+  void destroy() {
+    socket.destroy();
+    unawaited(input.cancel());
+  }
+
+  @override
+  Future<void> flush() => socket.flush();
 }
 
 class _WebSocketSink implements StreamSink<List<int>> {
@@ -197,6 +325,8 @@ class AbessSshRuntime {
         profile.port,
         timeout: const Duration(seconds: 15),
       );
+    } else if (profile.usesUpgrade) {
+      transport = await _HttpUpgradeTransport.connect(profile);
     } else {
       final ws = await WebSocket.connect(
         Uri(

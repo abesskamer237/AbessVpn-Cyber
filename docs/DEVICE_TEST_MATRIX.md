@@ -31,3 +31,10 @@ Après migration d’une ancienne licence VLESS/TCP vers TLS dans le panneau, r�
 - Vérifier la limite de connexions simultanées avec deux téléphones.
 - Tester passage Wi-Fi/mobile, écran éteint, batterie, arrêt/reprise de l’APK et VPN permanent avec blocage sans VPN.
 - Confirmer qu’aucun mot de passe, fichier JSON ou URI réutilisable n’apparaît dans les logs/diagnostics.
+
+## SSH-WS HTTP Upgrade brut 2.5.4
+
+- Importer et connecter les modes HTTP 80/85 et TLS brut 443/2084, puis vérifier la navigation depuis une autre application.
+- Redémarrer l’APK et vérifier que le mode exact est conservé, sans transformation de HTTP brut en WebSocket encadré.
+- Vérifier les anciens exports WSS, le refus de HTTP 200/301/404 au lieu du 101 et les mauvais certificats/empreintes.
+- Suspendre le compte, épuiser son quota et vérifier les connexions simultanées sur les différents transports.

@@ -139,9 +139,35 @@ const tls = https.createServer(
   (_req, res) => res.end(),
 );
 tls.on("tlsClientError", () => {});
-tls.on("upgrade", (req, socket, head) => {
+const plain = http.createServer((_req, res) => {
+  res.writeHead(404);
+  res.end();
+});
+const handshakes = [];
+function onUpgrade(req, socket, head) {
+  socket.on("error", () => {});
   if (req.url !== "/ws-ssh") {
     socket.destroy();
+    return;
+  }
+  if (!req.headers["sec-websocket-key"]) {
+    handshakes.push({
+      path: req.url,
+      upgrade: req.headers.upgrade,
+      connection: req.headers.connection,
+      host: req.headers.host,
+    });
+    fs.writeFileSync(
+      path.join(directory, "http-handshakes.json"),
+      JSON.stringify(handshakes),
+    );
+    socket.cork();
+    socket.write(
+      "HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n",
+    );
+    if (head.length) socket.unshift(head);
+    sshWs.injectSocket(socket);
+    socket.uncork();
     return;
   }
   ws.handleUpgrade(req, socket, head, (connection) => {
@@ -149,7 +175,18 @@ tls.on("upgrade", (req, socket, head) => {
     stream.remoteAddress = socket.remoteAddress;
     sshWs.injectSocket(stream);
   });
+}
+tls.on("upgrade", onUpgrade);
+plain.on("upgrade", onUpgrade);
+await new Promise((r) => plain.listen(0, "127.0.0.1", r));
+const rejectUpgrade = http.createServer((_req, res) => {
+  res.writeHead(200);
+  res.end();
 });
+rejectUpgrade.on("upgrade", (_req, socket) =>
+  socket.end("HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n"),
+);
+await new Promise((r) => rejectUpgrade.listen(0, "127.0.0.1", r));
 await new Promise((r) => tls.listen(0, "127.0.0.1", r));
 fs.writeFileSync(
   path.join(directory, "fixture.json"),
@@ -159,6 +196,9 @@ fs.writeFileSync(
     host: "127.0.0.1",
     port: ssh.address().port,
     tlsPort: tls.address().port,
+    wsPort: plain.address().port,
+    rejectPort: rejectUpgrade.address().port,
+    tls: false,
     username: "ssh_test",
     password,
     fingerprint,
