@@ -662,10 +662,13 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
   // The API control-plane hostname is injected by CI. Never fall back to old
   // hosts or raw IPs: doing so could send licence tokens to a retired server.
   static final List<String> _robustMasterUrls = () {
-    var configured = _configuredApiBaseUrl.trim().replaceFirst(RegExp(r'/+$'), '');
-    if (configured.isEmpty) return <String>[];
-    if (!configured.startsWith('http://') && !configured.startsWith('https://')) {
-      configured = 'https://$configured';
+    final configured = _configuredApiBaseUrl.trim().replaceFirst(RegExp(r'/+$'), '');
+    if (configured.isEmpty || !configured.startsWith('https://')) {
+      return <String>[];
+    }
+    final parsed = Uri.tryParse(configured);
+    if (parsed == null || parsed.scheme != 'https' || parsed.host.isEmpty || !parsed.hasAuthority) {
+      return <String>[];
     }
     return <String>[configured];
   }();
