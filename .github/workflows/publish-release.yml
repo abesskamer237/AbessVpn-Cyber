@@ -109,11 +109,11 @@ jobs:
             rm -rf "$tmp_dir"
           fi
           if [ -f android/app/build.gradle ]; then
-            sed -i "s/minSdkVersion.*/minSdkVersion 21/" android/app/build.gradle || true
-            sed -i "s/minSdk .*/minSdk 21/" android/app/build.gradle || true
+            sed -i "s/minSdkVersion.*/minSdkVersion 23/" android/app/build.gradle || true
+            sed -i "s/minSdk .*/minSdk 23/" android/app/build.gradle || true
           fi
           if [ -f android/app/build.gradle.kts ]; then
-            sed -i "s/minSdk = flutter.minSdkVersion/minSdk = 21/" android/app/build.gradle.kts || true
+            sed -i "s/minSdk = flutter.minSdkVersion/minSdk = 23/" android/app/build.gradle.kts || true
           fi
 
       - name: Configure persistent Android release signing
