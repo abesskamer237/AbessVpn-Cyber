@@ -47,3 +47,9 @@ jobs:
             echo "Remove retired API hosts and all certificate-validation bypasses from the Android client." >&2
             exit 1
           fi
+          if grep -nF "configured.startsWith('http://')" lib/main.dart; then
+            echo "The Android client must not accept an HTTP API base URL." >&2
+            exit 1
+          fi
+          grep -qF "!configured.startsWith('https://')" lib/main.dart
+          grep -qF "parsed.scheme != 'https'" lib/main.dart
