@@ -10,6 +10,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -282,6 +283,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
 
   // Profils conservés localement ; currentServer est le profil sélectionné.
   static const String _savedProfilesKey = 'abess_imported_servers';
+  static const FlutterSecureStorage _secureStorage = FlutterSecureStorage();
   static const String _selectedProfileKey = 'abess_selected_server_id';
   List<ImportedVpnServer> savedServers = <ImportedVpnServer>[];
   ImportedVpnServer? currentServer;
@@ -1331,17 +1333,26 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
 
   Future<void> _persistProfileState() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
-      _savedProfilesKey,
-      jsonEncode(savedServers.map(_serverToJsonMap).toList()),
-    );
+    final encodedProfiles = jsonEncode(savedServers.map(_serverToJsonMap).toList());
+
+    try {
+      // Tokens, UUIDs, encrypted links and connection credentials belong in
+      // Android Keystore-backed secure storage, never in plain SharedPreferences.
+      await _secureStorage.write(key: _savedProfilesKey, value: encodedProfiles);
+    } catch (error) {
+      _addLog('STOCKAGE SÉCURISÉ INDISPONIBLE : profils non enregistrés ($error)');
+      _showToast('Stockage sécurisé indisponible. La configuration n’a pas été sauvegardée.');
+      return;
+    }
+
+    // Remove legacy plaintext copies only after the secure write succeeded.
+    await prefs.remove(_savedProfilesKey);
+    await prefs.remove('abess_imported_server');
+
     if (currentServer == null) {
       await prefs.remove(_selectedProfileKey);
-      await prefs.remove('abess_imported_server');
     } else {
       await prefs.setString(_selectedProfileKey, currentServer!.id);
-      // Keep the legacy key in sync so older builds can still recover the active profile.
-      await prefs.setString('abess_imported_server', jsonEncode(_serverToJsonMap(currentServer!)));
     }
   }
 
@@ -1360,7 +1371,15 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
     }
 
     final loaded = <ImportedVpnServer>[];
-    final storedList = prefs.getString(_savedProfilesKey);
+    String? secureStoredList;
+    try {
+      secureStoredList = await _secureStorage.read(key: _savedProfilesKey);
+    } catch (error) {
+      _addLog('LECTURE DU STOCKAGE SÉCURISÉ IMPOSSIBLE : $error');
+    }
+    // Migrate older plaintext profiles once; _persistProfileState writes them
+    // to secure storage before deleting the old SharedPreferences entries.
+    final storedList = secureStoredList ?? prefs.getString(_savedProfilesKey);
     try {
       if (storedList != null) {
         final decoded = jsonDecode(storedList);
@@ -1401,7 +1420,13 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
       savedServers = loaded;
       currentServer = selected;
     });
-    if (storedList == null && loaded.isNotEmpty) await _persistProfileState();
+    if (secureStoredList == null && loaded.isNotEmpty) {
+      await _persistProfileState();
+    } else if (secureStoredList != null) {
+      // A secure copy already exists; discard any stale plaintext duplicates.
+      await prefs.remove(_savedProfilesKey);
+      await prefs.remove('abess_imported_server');
+    }
     if (selected == null) {
       _addLog('AUCUN SERVEUR ACTIF : IMPORTez un token ou un lien de configuration');
     } else {
