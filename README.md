@@ -154,3 +154,9 @@ Téléchargez la variante ARM64 ou ARM32 adaptée à votre téléphone ; la vari
 Le JSON du panel prend désormais en charge `ws` (HTTP 80), `ws-alt` (HTTP 85 ou port alternatif configuré), `wss-raw` (TLS 443) et `wss-raw-alt` (TLS 2084). Ces modes envoient un GET HTTP Upgrade, exigent le statut 101 puis transportent directement SSH, sans trames WebSocket. L’empreinte SSH est vérifiée même sans TLS. Les anciens profils `wss` et `wss-alt` utilisent toujours le WebSocket standard avec certificat vérifié. Le mode exact est conservé à l’import, au redémarrage et lors d’une copie de configuration.
 
 Exporter le mode **SSH-WS · HTTP Upgrade brut — 80** depuis le panel, puis importer le JSON dans cette version de l’APK. Le SSH chiffre le contenu ; les en-têtes HTTP ne sont pas protégés par TLS dans le mode HTTP. TCP et DNS sont transportés, les autres flux UDP restent bloqués.
+
+## SSH TCP avec payload et WebSocket (2.5.5+)
+
+Le client conserve le payload, le chemin et le SNI du JSON exporté par le panneau. `tcp` avec un payload HTTP ouvre le tunnel HTTP (réponse 200/101), puis réalise une vraie authentification SSH avec vérification de l’empreinte. `ws`/`ws-alt` et `wss-raw`/`wss-raw-alt` restent des HTTP Upgrade bruts (101 obligatoire) ; `ws-framed`, `wss` et `wss-alt` utilisent les trames WebSocket standard. Les certificats TLS restent vérifiés, y compris avec un SNI différent de l’adresse de connexion. Les placeholders de payload pris en charge sont `[crlf]`, `[cr]`, `[lf]`, `[host]`, `[port]`, `[host_port]`, `[protocol]` et `[ua]`. Les accès restent configurés manuellement sur les VPS.
+
+La publication de release Android se déclenche désormais uniquement sur un tag `v*` ou une demande manuelle. Le push sur `main` exécute les builds/tests sans publier de release.

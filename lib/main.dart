@@ -420,9 +420,9 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
           final decoded = jsonDecode(link);
           if (decoded is Map && decoded['format'] == 'abess-ssh-v1') {
             final profile = AbessSshProfile.fromJson(Map<String, dynamic>.from(decoded));
-            final wireName = profile.usesUpgrade ? (profile.usesTls ? 'SSH-WS TLS' : 'SSH-WS') : (profile.transport == 'tcp' ? 'SSH TCP' : 'SSH WebSocket TLS');
+            final wireName = profile.usesUpgrade ? (profile.usesTls ? 'SSH-WS TLS' : 'SSH-WS') : (profile.transport == 'tcp' ? (profile.payload.isEmpty ? 'SSH TCP' : 'SSH TCP + payload') : (profile.usesTls ? 'SSH WebSocket TLS' : 'SSH WebSocket'));
             final server = ImportedVpnServer(name: '$wireName · ${profile.username}', address: profile.host,
-              port: profile.port, path: '/ws-ssh', sni: profile.host, uuid: '', protocol: 'ssh',
+              port: profile.port, path: profile.path, sni: profile.sni, uuid: '', protocol: 'ssh', method: profile.payload,
               transport: profile.transport == 'tcp' ? 'tcp' : 'ws', tls: profile.usesTls,
               sshTransport: profile.transport,
               sshUsername: profile.username, sshPassword: profile.password, sshFingerprint: profile.fingerprint,
@@ -1377,7 +1377,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
 
   String _profileIdentityKey(ImportedVpnServer server) {
     if (server.protocol.toLowerCase() == 'ssh' && server.sshUsername != null) {
-      return sshProfileIdentity(server.address, server.port, server.sshUsername!, server.sshTransport ?? (server.tls ? 'wss' : 'tcp'), server.tls);
+      return sshProfileIdentity(server.address, server.port, server.sshUsername!, server.sshTransport ?? (server.tls ? 'wss' : 'tcp'), server.tls, path:server.path, sni:server.sni);
     }
     final licenseId = server.licenseId?.trim();
     if (licenseId != null && licenseId.isNotEmpty) return 'manual-license:$licenseId';
@@ -1808,7 +1808,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
       final value = {'format': 'abess-ssh-v1', 'protocol': 'ssh', 'host': profile.address, 'port': profile.port,
         'username': profile.sshUsername, 'password': profile.sshPassword, 'fingerprint': profile.sshFingerprint,
         'transport': profile.sshTransport ?? (profile.tls ? (profile.port == 2084 ? 'wss-alt' : 'wss') : 'tcp'),
-        'tls': profile.tls, 'sni': profile.tls ? profile.sni : null, 'path': (profile.sshTransport ?? (profile.tls ? 'wss' : 'tcp')) != 'tcp' ? '/ws-ssh' : null,
+        'tls': profile.tls, 'sni': profile.tls ? profile.sni : null, 'path': profile.path, 'payload': profile.method.isEmpty ? null : profile.method,
         'quotaGb': profile.bandwidthGb, 'usedGb': profile.bandwidthUsedGb, 'expiresAt': profile.expiresAt.toIso8601String()};
       await Clipboard.setData(ClipboardData(text: jsonEncode(value)));
       _showToast('Configuration SSH copiée : elle contient un mot de passe.');
@@ -2894,7 +2894,7 @@ class _MainVpnScreenState extends State<MainVpnScreen> with TickerProviderStateM
           final runtime = AbessSshRuntime(); _sshRuntime = runtime;
           await runtime.start(AbessSshProfile(host: srv.address, port: srv.port, username: srv.sshUsername!,
             password: srv.sshPassword!, fingerprint: srv.sshFingerprint!, transport: srv.sshTransport ?? (srv.tls ? 'wss' : 'tcp'),
-            expiresAt: srv.expiresAt), onDisconnected: () {
+            expiresAt: srv.expiresAt, path:srv.path, sni:srv.sni, payload:srv.method), onDisconnected: () {
               if (_sshRuntime != runtime) return;
               _userWantedConnection = false;
               unawaited(_disconnectVpn());

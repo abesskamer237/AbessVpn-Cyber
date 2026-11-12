@@ -10,11 +10,14 @@ String sshProfileIdentity(
   int port,
   String username,
   String transport,
-  bool tls,
-) => 'ssh:${host.toLowerCase()}|$port|$username|$transport|$tls';
+  bool tls, {
+  String path = '/ws-ssh',
+  String sni = '',
+}) => 'ssh:${host.toLowerCase()}|$port|$username|$transport|$tls|$path|$sni';
 
 class AbessSshProfile {
   final String host, username, password, fingerprint, transport;
+  final String path, sni, payload;
   final int port;
   final DateTime expiresAt;
   final double quotaGb, usedGb;
@@ -28,6 +31,9 @@ class AbessSshProfile {
     required this.expiresAt,
     this.quotaGb = 10,
     this.usedGb = 0,
+    this.path = '/ws-ssh',
+    this.sni = '',
+    this.payload = '',
   });
   bool get usesTls => transport.startsWith('wss');
   bool get usesUpgrade =>
@@ -39,21 +45,26 @@ class AbessSshProfile {
     final pass = value['password']?.toString() ?? '';
     final pin = value['fingerprint']?.toString() ?? '';
     final transport = value['transport']?.toString() ?? '';
+    final path = value['path']?.toString() ?? '/ws-ssh';
+    final sni = value['sni']?.toString() ?? host;
+    final payload = value['payload']?.toString() ?? '';
     final expiry = DateTime.tryParse(value['expiresAt']?.toString() ?? '');
     final quota = (value['quotaGb'] as num?)?.toDouble() ?? 10;
+    final used = (value['usedGb'] as num?)?.toDouble() ?? 0;
     if (value['format'] != 'abess-ssh-v1' ||
         value['protocol'] != 'ssh' ||
         !RegExp(r'^[A-Za-z0-9][A-Za-z0-9.-]{0,252}$').hasMatch(host) ||
         port < 1 ||
         port > 65535 ||
         !RegExp(r'^[a-z][a-z0-9_-]{2,31}$').hasMatch(user) ||
-        pass.length < 12 ||
-        pass.length > 256 ||
+        pass.isEmpty ||
+        pass.length > 1024 ||
         !RegExp(r'^SHA256:[A-Za-z0-9+/]{43}$').hasMatch(pin) ||
         ![
           'tcp',
           'ws',
           'ws-alt',
+          'ws-framed',
           'wss-raw',
           'wss-raw-alt',
           'wss',
@@ -63,9 +74,19 @@ class AbessSshProfile {
         !expiry.isAfter(DateTime.now()) ||
         !quota.isFinite ||
         quota <= 0 ||
+        !used.isFinite ||
+        used < 0 ||
+        used >= quota ||
         (value['tls'] != transport.startsWith('wss')) ||
-        (transport.startsWith('wss') && value['sni'] != host) ||
-        (transport != 'tcp' && value['path'] != '/ws-ssh')) {
+        (transport.startsWith('wss') &&
+            !RegExp(r'^[A-Za-z0-9][A-Za-z0-9.-]{0,252}$').hasMatch(sni)) ||
+        !path.startsWith('/') ||
+        path.startsWith('//') ||
+        path.length > 2048 ||
+        RegExp(r'[\r\n\x00]').hasMatch(path) ||
+        (payload.isNotEmpty &&
+            (!validSshPayload(payload) ||
+                ['ws-framed', 'wss', 'wss-alt'].contains(transport)))) {
       throw const FormatException(
         'Configuration SSH ABESS invalide, expirée ou dépourvue d’empreinte serveur.',
       );
@@ -79,9 +100,55 @@ class AbessSshProfile {
       transport: transport,
       expiresAt: expiry,
       quotaGb: quota,
-      usedGb: (value['usedGb'] as num?)?.toDouble() ?? 0,
+      path: path,
+      sni: sni,
+      payload: payload,
+      usedGb: used,
     );
   }
+}
+
+bool validSshPayload(String value) =>
+    value.length <= 8192 &&
+    !RegExp(r'[^\x20-\x7e\r\n\t]').hasMatch(value) &&
+    RegExp(
+      r'^(CONNECT|GET|POST|HEAD|OPTIONS|PUT|PATCH|DELETE) ',
+    ).hasMatch(value) &&
+    !RegExp(
+      r'\[(?!(?:crlf|cr|lf|host|port|host_port|protocol|ua)\])[^\]]+\]',
+      caseSensitive: false,
+    ).hasMatch(value);
+
+String expandedSshPayload(AbessSshProfile profile) {
+  final httpHost = profile.usesTls && profile.sni.isNotEmpty
+      ? profile.sni
+      : profile.host;
+  final authority = [80, 443].contains(profile.port)
+      ? httpHost
+      : '$httpHost:${profile.port}';
+  final template = profile.payload.isNotEmpty
+      ? profile.payload
+      : 'GET ${profile.path} HTTP/1.1[crlf]Host: $authority[crlf]Upgrade: websocket[crlf]Connection: Upgrade[crlf][crlf]';
+  if (!validSshPayload(template))
+    throw const FormatException('Payload SSH invalide.');
+  final values = {
+    'crlf': '\r\n',
+    'cr': '\r',
+    'lf': '\n',
+    'host': profile.host,
+    'port': '${profile.port}',
+    'host_port': '${profile.host}:${profile.port}',
+    'protocol': 'HTTP/1.1',
+    'ua': 'ABESS VPN',
+  };
+  final expanded = template.replaceAllMapped(
+    RegExp(
+      r'\[(crlf|cr|lf|host|port|host_port|protocol|ua)\]',
+      caseSensitive: false,
+    ),
+    (match) => values[match[1]!.toLowerCase()]!,
+  );
+  return expanded.endsWith('\r\n\r\n') ? expanded : '$expanded\r\n\r\n';
 }
 
 /// HTTP Upgrade followed by raw SSH bytes (no RFC6455 frames). The initial
@@ -92,27 +159,26 @@ class _HttpUpgradeTransport implements SSHSocket {
   final Uint8List pending;
   _HttpUpgradeTransport(this.socket, this.input, this.pending);
   static Future<SSHSocket> connect(AbessSshProfile profile) async {
-    final Socket socket = profile.usesTls
-        ? await SecureSocket.connect(
-            profile.host,
-            profile.port,
-            timeout: const Duration(seconds: 15),
-          )
-        : await Socket.connect(
-            profile.host,
-            profile.port,
-            timeout: const Duration(seconds: 15),
-          );
+    final raw = await Socket.connect(
+      profile.host,
+      profile.port,
+      timeout: const Duration(seconds: 15),
+    );
+    final Socket socket;
+    try {
+      socket = profile.usesTls
+          ? await SecureSocket.secure(
+              raw,
+              host: profile.sni.isEmpty ? profile.host : profile.sni,
+            ).timeout(const Duration(seconds: 15))
+          : raw;
+    } catch (_) {
+      raw.destroy();
+      rethrow;
+    }
     final iterator = StreamIterator<Uint8List>(socket);
     try {
-      final authority = [80, 443].contains(profile.port)
-          ? profile.host
-          : '${profile.host}:${profile.port}';
-      socket.add(
-        ascii.encode(
-          'GET /ws-ssh HTTP/1.1\r\nHost: $authority\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n',
-        ),
-      );
+      socket.add(ascii.encode(expandedSshPayload(profile)));
       await socket.flush();
       Future<Uint8List> headers() async {
         final buffer = <int>[];
@@ -134,7 +200,11 @@ class _HttpUpgradeTransport implements SSHSocket {
             );
           if (boundary < 0) continue;
           final lines = ascii.decode(buffer.sublist(0, boundary)).split('\r\n');
-          if (!RegExp(r'^HTTP/1\.[01] 101(?: |$)').hasMatch(lines.first)) {
+          if (!RegExp(
+            profile.usesUpgrade
+                ? r'^HTTP/1\.[01] 101(?: |$)'
+                : r'^HTTP/1\.[01] (200|101)(?: |$)',
+          ).hasMatch(lines.first)) {
             throw const FormatException(
               'Le serveur n’accepte pas le tunnel SSH-WS (HTTP 101 attendu).',
             );
@@ -149,11 +219,12 @@ class _HttpUpgradeTransport implements SSHSocket {
                 .trim()
                 .toLowerCase();
           }
-          if (fields['upgrade'] != 'websocket' ||
-              !(fields['connection'] ?? '')
-                  .split(',')
-                  .map((v) => v.trim())
-                  .contains('upgrade')) {
+          if (profile.usesUpgrade &&
+              (fields['upgrade'] != 'websocket' ||
+                  !(fields['connection'] ?? '')
+                      .split(',')
+                      .map((v) => v.trim())
+                      .contains('upgrade'))) {
             throw const FormatException(
               'Le serveur n’a pas confirmé HTTP Upgrade WebSocket.',
             );
@@ -319,23 +390,61 @@ class AbessSshRuntime {
     if (!profile.expiresAt.isAfter(DateTime.now()))
       throw const FormatException('Compte SSH expiré.');
     final SSHSocket transport;
-    if (profile.transport == 'tcp') {
+    if (profile.transport == 'tcp' && profile.payload.isEmpty) {
       transport = await SSHSocket.connect(
         profile.host,
         profile.port,
         timeout: const Duration(seconds: 15),
       );
-    } else if (profile.usesUpgrade) {
+    } else if (profile.usesUpgrade ||
+        (profile.transport == 'tcp' && profile.payload.isNotEmpty)) {
       transport = await _HttpUpgradeTransport.connect(profile);
     } else {
-      final ws = await WebSocket.connect(
-        Uri(
-          scheme: 'wss',
-          host: profile.host,
-          port: profile.port,
-          path: '/ws-ssh',
-        ).toString(),
-      ).timeout(const Duration(seconds: 15));
+      final client = HttpClient();
+      client.connectionFactory = (uri, proxyHost, proxyPort) async {
+        if (proxyHost != null)
+          throw const SocketException('Proxy SSH WebSocket non configuré.');
+        final task = await Socket.startConnect(profile.host, profile.port);
+        Socket? connected;
+        final future = task.socket.then<Socket>((raw) async {
+          try {
+            connected = profile.usesTls
+                ? await SecureSocket.secure(
+                    raw,
+                    host: profile.sni.isEmpty ? profile.host : profile.sni,
+                  )
+                : raw;
+            return connected!;
+          } catch (_) {
+            raw.destroy();
+            rethrow;
+          }
+        });
+        return ConnectionTask.fromSocket(future, () {
+          task.cancel();
+          connected?.destroy();
+        });
+      };
+      final WebSocket ws;
+      try {
+        final relative = Uri.parse(profile.path);
+        ws = await WebSocket.connect(
+          Uri(
+            scheme: profile.usesTls ? 'wss' : 'ws',
+            host: profile.usesTls && profile.sni.isNotEmpty
+                ? profile.sni
+                : profile.host,
+            port: profile.port,
+            path: relative.path,
+            query: relative.hasQuery ? relative.query : null,
+          ).toString(),
+          customClient: client,
+        ).timeout(const Duration(seconds: 15));
+      } catch (_) {
+        client.close(force: true);
+        rethrow;
+      }
+      client.close();
       ws.pingInterval = const Duration(seconds: 20);
       transport = _WebSocketTransport(ws);
     }

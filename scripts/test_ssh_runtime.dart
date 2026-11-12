@@ -231,6 +231,48 @@ Future<void> main() async {
     await tcp.start(profile, onDisconnected: () {});
     await transfer(tcp, json['targetPort'] as int);
     await testXray(tcp, json['targetPort'] as int, directory);
+    const template =
+        'CONNECT [host_port] [protocol][crlf]Host: [host][crlf]X-ABESS-Payload: tcp[crlf][crlf]';
+    final payloadTcp = AbessSshRuntime();
+    runtimes.add(payloadTcp);
+    await payloadTcp.start(
+      AbessSshProfile.fromJson({
+        ...json,
+        'port': json['payloadPort'],
+        'payload': template,
+      }),
+      onDisconnected: () {},
+    );
+    await transfer(payloadTcp, json['targetPort'] as int);
+    final sent = await File('${directory.path}/tcp-payload.txt').readAsString();
+    check(
+      sent.contains('CONNECT 127.0.0.1:${json['payloadPort']} HTTP/1.1') &&
+          sent.contains('X-ABESS-Payload: tcp'),
+      'TCP payload is actually sent and expanded before SSH',
+    );
+    final payloadBadPin = AbessSshRuntime();
+    runtimes.add(payloadBadPin);
+    await refuses(
+      () => payloadBadPin.start(
+        AbessSshProfile.fromJson({
+          ...json,
+          'port': json['payloadPort'],
+          'payload': template,
+          'fingerprint': 'SHA256:${'A' * 43}',
+        }),
+        onDisconnected: () {},
+      ),
+      'TCP payload still verifies SSH host key',
+    );
+    for (final invalid in ['GET / HTTP/1.1[unknown]', 'GET / HTTP/1.1\x00']) {
+      var refused = false;
+      try {
+        AbessSshProfile.fromJson({...json, 'payload': invalid});
+      } catch (_) {
+        refused = true;
+      }
+      check(refused, 'Malformed payload rejected');
+    }
     final config = tcp.xrayConfig();
     final text = jsonEncode(config);
     check(!text.contains('freedom'), 'No direct routing fallback');
@@ -328,6 +370,65 @@ Future<void> main() async {
       onDisconnected: () {},
     );
     await transfer(rawTls, json['targetPort'] as int);
+    final framedPlain = AbessSshRuntime();
+    runtimes.add(framedPlain);
+    await framedPlain.start(
+      AbessSshProfile.fromJson({
+        ...rawPlainJson,
+        'transport': 'ws-framed',
+        'path': '/custom-ssh',
+      }),
+      onDisconnected: () {},
+    );
+    await transfer(framedPlain, json['targetPort'] as int);
+    final customRaw = AbessSshRuntime();
+    runtimes.add(customRaw);
+    await customRaw.start(
+      AbessSshProfile.fromJson({
+        ...rawPlainJson,
+        'path': '/custom-ssh',
+        'payload':
+            'GET /custom-ssh HTTP/1.1[crlf]Host: [host_port][crlf]Upgrade: websocket[crlf]Connection: Upgrade[crlf][crlf]',
+      }),
+      onDisconnected: () {},
+    );
+    await transfer(customRaw, json['targetPort'] as int);
+    final customSni = AbessSshRuntime();
+    runtimes.add(customSni);
+    await customSni.start(
+      AbessSshProfile.fromJson({
+        ...tlsJson,
+        'transport': 'wss-raw',
+        'sni': 'localhost',
+        'path': '/custom-ssh',
+      }),
+      onDisconnected: () {},
+    );
+    await transfer(customSni, json['targetPort'] as int);
+    final customWss = AbessSshRuntime();
+    runtimes.add(customWss);
+    await customWss.start(
+      AbessSshProfile.fromJson({
+        ...tlsJson,
+        'sni': 'localhost',
+        'path': '/custom-ssh',
+      }),
+      onDisconnected: () {},
+    );
+    await transfer(customWss, json['targetPort'] as int);
+    final badSni = AbessSshRuntime();
+    runtimes.add(badSni);
+    await refuses(
+      () => badSni.start(
+        AbessSshProfile.fromJson({
+          ...tlsJson,
+          'sni': 'wrong.example.test',
+          'transport': 'wss-raw',
+        }),
+        onDisconnected: () {},
+      ),
+      'Custom SNI must still match the certificate',
+    );
     final handshakes =
         jsonDecode(
               await File(
@@ -339,11 +440,15 @@ Future<void> main() async {
       handshakes.length >= 2 &&
           handshakes.every(
             (v) =>
-                v['path'] == '/ws-ssh' &&
+                ['/ws-ssh', '/custom-ssh'].contains(v['path']) &&
                 v['upgrade'] == 'websocket' &&
                 v['connection'] == 'Upgrade',
           ),
       'Actual raw HTTP Upgrade payload used in plain and TLS SSH-WS',
+    );
+    check(
+      handshakes.any((v) => v['host'] == 'localhost:${json['tlsPort']}'),
+      'Default TLS Host follows custom SNI',
     );
     var rejected = false;
     try {
@@ -360,7 +465,7 @@ Future<void> main() async {
       'JSON credentials redacted',
     );
     print(
-      'Dart SSH runtime PASS: TCP, raw SSH-WS HTTP/TLS, HTTP 200 rejection, verified WSS, SHA256 pin rejection, authenticated SOCKS, real HTTP, DNS routing and no direct fallback.',
+      'Dart SSH runtime PASS: TCP with real custom payload, framed WS, custom SNI/path, raw SSH-WS HTTP/TLS, HTTP 200 rejection, verified WSS, SHA256 pin rejection, authenticated SOCKS, real HTTP, DNS routing and no direct fallback.',
     );
   } finally {
     for (final runtime in runtimes) {

@@ -146,7 +146,7 @@ const plain = http.createServer((_req, res) => {
 const handshakes = [];
 function onUpgrade(req, socket, head) {
   socket.on("error", () => {});
-  if (req.url !== "/ws-ssh") {
+  if (!["/ws-ssh", "/custom-ssh"].includes(req.url)) {
     socket.destroy();
     return;
   }
@@ -179,6 +179,24 @@ function onUpgrade(req, socket, head) {
 tls.on("upgrade", onUpgrade);
 plain.on("upgrade", onUpgrade);
 await new Promise((r) => plain.listen(0, "127.0.0.1", r));
+const payloadTcp = net.createServer(socket => {
+  socket.on('error',()=>{});
+  let buffer=Buffer.alloc(0);
+  function read(chunk){
+    buffer=Buffer.concat([buffer,chunk]);
+    if(buffer.length>8192){socket.destroy();return;}
+    const end=buffer.indexOf('\r\n\r\n');if(end<0)return;
+    const headers=buffer.subarray(0,end).toString('ascii');
+    if(!headers.startsWith('CONNECT 127.0.0.1:')||!headers.includes('X-ABESS-Payload: tcp')){socket.destroy();return;}
+    fs.writeFileSync(path.join(directory,'tcp-payload.txt'),headers);
+    socket.removeListener('data',read);
+    socket.write('HTTP/1.1 200 Connection Established\r\n\r\n');
+    if(buffer.length>end+4)socket.unshift(buffer.subarray(end+4));
+    sshWs.injectSocket(socket);
+  }
+  socket.on('data',read);
+});
+await new Promise(r=>payloadTcp.listen(0,'127.0.0.1',r));
 const rejectUpgrade = http.createServer((_req, res) => {
   res.writeHead(200);
   res.end();
@@ -197,6 +215,7 @@ fs.writeFileSync(
     port: ssh.address().port,
     tlsPort: tls.address().port,
     wsPort: plain.address().port,
+    payloadPort: payloadTcp.address().port,
     rejectPort: rejectUpgrade.address().port,
     tls: false,
     username: "ssh_test",
